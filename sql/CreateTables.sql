@@ -3,7 +3,7 @@ CREATE TABLE users (
   username VARCHAR(50) UNIQUE NOT NULL,
   email VARCHAR(100) UNIQUE NOT NULL,
   password_hash TEXT NOT NULL,
-  created_at TIMESTAMP DEFAULT NOW()
+  created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
 CREATE TABLE subscriptions (
@@ -15,7 +15,7 @@ CREATE TABLE subscriptions (
   state VARCHAR(256) NOT NULL,
   start_date DATE NOT NULL,
   end_date DATE NOT NULL,
-  created_at TIMESTAMP DEFAULT NOW(),
+  created_at TIMESTAMPTZ DEFAULT NOW(),
 
   CONSTRAINT valid_subscription_type CHECK (
     (genre IS NOT NULL AND artist IS NULL)
@@ -50,9 +50,9 @@ CREATE TABLE events (
   city VARCHAR(256) NOT NULL,
   state VARCHAR(256) NOT NULL,
   venue VARCHAR(256),
-  event_date_time TIMESTAMP NOT NULL,
+  event_date_time TIMESTAMPTZ NOT NULL,
   priority VARCHAR(20) DEFAULT 'normal', -- 'normal' or 'urgent'
-  published_at TIMESTAMP DEFAULT NOW()
+  published_at TIMESTAMPTZ DEFAULT NOW()
 );
 
 -- Notification log (track what was sent to whom)
@@ -60,5 +60,5 @@ CREATE TABLE notifications (
   id SERIAL PRIMARY KEY,
   user_id INT REFERENCES users(id) ON DELETE CASCADE,
   event_id INT REFERENCES events(id) ON DELETE CASCADE,
-  sent_at TIMESTAMP DEFAULT NOW()
+  sent_at TIMESTAMPTZ DEFAULT NOW()
 );
