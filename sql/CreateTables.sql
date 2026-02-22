@@ -49,7 +49,7 @@ CREATE TABLE events (
   genre VARCHAR(256) NOT NULL,
   city VARCHAR(256) NOT NULL,
   state VARCHAR(256) NOT NULL,
-  venue VARCHAR(256),
+  venue VARCHAR(256) NOT NULL,
   event_date_time TIMESTAMPTZ NOT NULL,
   priority VARCHAR(20) DEFAULT 'normal', -- 'normal' or 'urgent'
   published_at TIMESTAMPTZ DEFAULT NOW()
