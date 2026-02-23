@@ -1,0 +1,90 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_USER: pubsub_user
+      POSTGRES_PASSWORD: pubsub_password
+      POSTGRES_DB: music_pubsub
+    ports:
+      - "5432:5432"
+    volumes:
+      - ./sql/CreateTables.sql:/docker-entrypoint-initdb.d/01-init.sql
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U pubsub_user -d music_pubsub"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Broker 1
+  broker-1:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    environment:
+      BROKER_ID: "broker-1"
+      BROKER_PORT: 5001
+      DB_HOST: postgres
+      DB_USER: pubsub_user
+      DB_PASSWORD: pubsub_password
+      DB_NAME: music_pubsub
+      PEER_BROKERS: "broker-2:5002,broker-3:5003"
+    ports:
+      - "5001:5000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - pubsub-network
+
+  # Broker 2
+  broker-2:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    environment:
+      BROKER_ID: "broker-2"
+      BROKER_PORT: 5002
+      DB_HOST: postgres
+      DB_USER: pubsub_user
+      DB_PASSWORD: pubsub_password
+      DB_NAME: music_pubsub
+      PEER_BROKERS: "broker-1:5001,broker-3:5003"
+    ports:
+      - "5002:5000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - pubsub-network
+
+  # Broker 3
+  broker-3:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    environment:
+      BROKER_ID: "broker-3"
+      BROKER_PORT: 5003
+      DB_HOST: postgres
+      DB_USER: pubsub_user
+      DB_PASSWORD: pubsub_password
+      DB_NAME: music_pubsub
+      PEER_BROKERS: "broker-1:5001,broker-2:5002"
+    ports:
+      - "5003:5000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - pubsub-network
+
+volumes:
+  postgres_data:
+
+networks:
+  pubsub-network:
+    driver: bridge
