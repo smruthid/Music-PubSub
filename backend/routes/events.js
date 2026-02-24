@@ -41,11 +41,13 @@ router.post('/', authenticateToken, async (req, res) => {
                 'INSERT INTO notifications (user_id, event_id) VALUES ($1, $2)',
                 [userId, event.id]
             );
+
+            sendNotification(userId, {
+                type: priority === 'urgent' ? 'urgent_notification' : 'notification',
+                event
+            });
         }
-        sendNotification(userId, {
-            type: priority === 'urgent' ? 'urgent_notification' : 'notification',
-            event
-        });
+        
 
         res.status(201).json({ 
             message: 'Event published successfully', 
