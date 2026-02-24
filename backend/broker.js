@@ -43,7 +43,6 @@ try {
   const gossipService = new GossipService(BROKER_ID, BROKER_PORT, PEER_BROKERS, lamportClock, {
     saveEvent: async (eventData) => {
       console.log(`[${BROKER_ID}] Saving event:`, eventData.title);
-      // TODO: Implement actual database saving
     },
   });
   console.log(`[${BROKER_ID}] GossipService initialized`);
@@ -55,42 +54,41 @@ try {
 
   // ==================== API Routes ====================
 
-  // Health check endpoint
   app.get('/health', (req, res) => {
+    console.log('[Route] GET /health');
     res.json({ status: 'ok', broker_id: BROKER_ID, timestamp: Date.now() });
   });
 
-  // Heartbeat endpoint
   app.post('/api/heartbeat', (req, res) => {
+    console.log('[Route] POST /api/heartbeat');
     heartbeatController.receiveHeartbeat(req, res);
   });
 
-  // Health status endpoint
   app.get('/api/health-status', (req, res) => {
+    console.log('[Route] GET /api/health-status');
     heartbeatController.getHealthStatus(req, res);
   });
 
-  // Gossip/replication endpoint
   app.post('/api/gossip', (req, res) => {
+    console.log('[Route] POST /api/gossip');
     replicationController.receiveGossip(req, res);
   });
 
-  // Sync request endpoint
   app.post('/api/sync-request', (req, res) => {
+    console.log('[Route] POST /api/sync-request');
     replicationController.handleSyncRequest(req, res);
   });
 
-  // Replication status endpoint
   app.get('/api/replication-status', (req, res) => {
+    console.log('[Route] GET /api/replication-status');
     replicationController.getReplicationStatus(req, res);
   });
 
   // ==================== Startup ====================
 
-  const server = app.listen(BROKER_PORT, "0.0.0.0", () => {
+  const server = app.listen(BROKER_PORT, () => {
     console.log(`\n[${BROKER_ID}] Server running on http://localhost:${BROKER_PORT}`);
 
-    // Start services
     try {
       heartbeatService.startHeartbeats();
       console.log(`[${BROKER_ID}] Heartbeat service started`);
@@ -109,12 +107,9 @@ try {
     console.log(`[${BROKER_ID}] Waiting for connections...`);
   });
 
-  // Error handling
   server.on('error', (err) => {
     console.error(`[${BROKER_ID}] Server error:`, err);
   });
-
-  // ==================== Graceful Shutdown ====================
 
   process.on('SIGTERM', () => {
     console.log(`\n[${BROKER_ID}] SIGTERM signal received: closing HTTP server`);
@@ -132,16 +127,12 @@ try {
 
 // ==================== Helpers ====================
 
-/**
- * Parse peer brokers from environment variable
- * Format: "broker-1:5001,broker-2:5002,broker-3:5003"
- */
 function parsePeerBrokers(peerBrokersStr) {
   return peerBrokersStr.split(',').map((item, index) => {
     const [id, port] = item.trim().split(':');
     return {
       id: id.trim(),
-      host: id.trim(), // Using hostname from docker-compose service name
+      host: id.trim(),
       port: parseInt(port.trim()),
     };
   });
