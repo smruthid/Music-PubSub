@@ -6,7 +6,6 @@
 require('dotenv').config();
 
 const express = require('express');
-const os = require('os');
 const LamportClock = require('./src/utils/lamportClock');
 const HeartbeatService = require('./src/services/HeartbeatService');
 const GossipService = require('./src/services/GossipService');
@@ -55,39 +54,33 @@ try {
   // ==================== API Routes ====================
 
   app.get('/health', (req, res) => {
-    console.log('[Route] GET /health');
     res.json({ status: 'ok', broker_id: BROKER_ID, timestamp: Date.now() });
   });
 
   app.post('/api/heartbeat', (req, res) => {
-    console.log('[Route] POST /api/heartbeat');
     heartbeatController.receiveHeartbeat(req, res);
   });
 
   app.get('/api/health-status', (req, res) => {
-    console.log('[Route] GET /api/health-status');
     heartbeatController.getHealthStatus(req, res);
   });
 
   app.post('/api/gossip', (req, res) => {
-    console.log('[Route] POST /api/gossip');
     replicationController.receiveGossip(req, res);
   });
 
   app.post('/api/sync-request', (req, res) => {
-    console.log('[Route] POST /api/sync-request');
     replicationController.handleSyncRequest(req, res);
   });
 
   app.get('/api/replication-status', (req, res) => {
-    console.log('[Route] GET /api/replication-status');
     replicationController.getReplicationStatus(req, res);
   });
 
   // ==================== Startup ====================
 
-  const server = app.listen(BROKER_PORT, () => {
-    console.log(`\n[${BROKER_ID}] Server running on http://localhost:${BROKER_PORT}`);
+  const server = app.listen(BROKER_PORT, '0.0.0.0', () => {
+    console.log(`\n[${BROKER_ID}] Server running on http://0.0.0.0:${BROKER_PORT}`);
 
     try {
       heartbeatService.startHeartbeats();
@@ -128,7 +121,7 @@ try {
 // ==================== Helpers ====================
 
 function parsePeerBrokers(peerBrokersStr) {
-  return peerBrokersStr.split(',').map((item, index) => {
+  return peerBrokersStr.split(',').map((item) => {
     const [id, port] = item.trim().split(':');
     return {
       id: id.trim(),
