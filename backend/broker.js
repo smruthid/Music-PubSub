@@ -87,7 +87,7 @@ try {
 
   // ==================== Startup ====================
 
-  const server = app.listen(BROKER_PORT, () => {
+  const server = app.listen(BROKER_PORT, "0.0.0.0", () => {
     console.log(`\n[${BROKER_ID}] Server running on http://localhost:${BROKER_PORT}`);
 
     // Start services
