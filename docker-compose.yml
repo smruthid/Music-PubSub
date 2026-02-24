@@ -23,7 +23,7 @@ services:
   broker-1:
     build:
       context: ./backend
-      dockerfile: Dockerfile
+      dockerfile: ./Dockerfile
     environment:
       BROKER_ID: "broker-1"
       BROKER_PORT: 5001
