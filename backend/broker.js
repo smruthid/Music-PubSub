@@ -3,7 +3,6 @@
  * Main entry point for broker instance
  */
 
-
 require('dotenv').config();
 
 const express = require('express');
@@ -32,66 +31,104 @@ console.log(`
 ╚════════════════════════════════════════════════╝
 `);
 
-// Initialize Lamport Clock
-const lamportClock = new LamportClock(0, BROKER_ID);
+try {
+  // Initialize Lamport Clock
+  const lamportClock = new LamportClock(0, BROKER_ID);
+  console.log(`[${BROKER_ID}] Lamport Clock initialized`);
 
-// Initialize Services
-const heartbeatService = new HeartbeatService(BROKER_ID, BROKER_PORT, PEER_BROKERS, lamportClock);
-const gossipService = new GossipService(BROKER_ID, BROKER_PORT, PEER_BROKERS, lamportClock, {
-  saveEvent: async (eventData) => {
-    console.log(`[${BROKER_ID}] Saving event:`, eventData.title);
-    // TODO: Implement actual database saving
-  },
-});
+  // Initialize Services
+  const heartbeatService = new HeartbeatService(BROKER_ID, BROKER_PORT, PEER_BROKERS, lamportClock);
+  console.log(`[${BROKER_ID}] HeartbeatService initialized`);
 
-// Initialize Controllers
-const heartbeatController = new HeartbeatController(heartbeatService, lamportClock);
-const replicationController = new ReplicationController(gossipService, heartbeatService, lamportClock);
+  const gossipService = new GossipService(BROKER_ID, BROKER_PORT, PEER_BROKERS, lamportClock, {
+    saveEvent: async (eventData) => {
+      console.log(`[${BROKER_ID}] Saving event:`, eventData.title);
+      // TODO: Implement actual database saving
+    },
+  });
+  console.log(`[${BROKER_ID}] GossipService initialized`);
 
-// ==================== API Routes ====================
+  // Initialize Controllers
+  const heartbeatController = new HeartbeatController(heartbeatService, lamportClock);
+  const replicationController = new ReplicationController(gossipService, heartbeatService, lamportClock);
+  console.log(`[${BROKER_ID}] Controllers initialized`);
 
-// Health check endpoint
-app.get('/health', (req, res) => {
-  res.json({ status: 'ok', broker_id: BROKER_ID, timestamp: Date.now() });
-});
+  // ==================== API Routes ====================
 
-// Heartbeat endpoint
-app.post('/api/heartbeat', (req, res) => {
-  heartbeatController.receiveHeartbeat(req, res);
-});
+  // Health check endpoint
+  app.get('/health', (req, res) => {
+    res.json({ status: 'ok', broker_id: BROKER_ID, timestamp: Date.now() });
+  });
 
-// Health status endpoint
-app.get('/api/health-status', (req, res) => {
-  heartbeatController.getHealthStatus(req, res);
-});
+  // Heartbeat endpoint
+  app.post('/api/heartbeat', (req, res) => {
+    heartbeatController.receiveHeartbeat(req, res);
+  });
 
-// Gossip/replication endpoint
-app.post('/api/gossip', (req, res) => {
-  replicationController.receiveGossip(req, res);
-});
+  // Health status endpoint
+  app.get('/api/health-status', (req, res) => {
+    heartbeatController.getHealthStatus(req, res);
+  });
 
-// Sync request endpoint
-app.post('/api/sync-request', (req, res) => {
-  replicationController.handleSyncRequest(req, res);
-});
+  // Gossip/replication endpoint
+  app.post('/api/gossip', (req, res) => {
+    replicationController.receiveGossip(req, res);
+  });
 
-// Replication status endpoint
-app.get('/api/replication-status', (req, res) => {
-  replicationController.getReplicationStatus(req, res);
-});
+  // Sync request endpoint
+  app.post('/api/sync-request', (req, res) => {
+    replicationController.handleSyncRequest(req, res);
+  });
 
-// ==================== Startup ====================
+  // Replication status endpoint
+  app.get('/api/replication-status', (req, res) => {
+    replicationController.getReplicationStatus(req, res);
+  });
 
-const server = app.listen(BROKER_PORT, () => {
-  console.log(`\n[${BROKER_ID}] Server running on http://localhost:${BROKER_PORT}`);
+  // ==================== Startup ====================
 
-  // Start services
-  heartbeatService.startHeartbeats();
-  gossipService.startGossip();
+  const server = app.listen(BROKER_PORT, () => {
+    console.log(`\n[${BROKER_ID}] Server running on http://localhost:${BROKER_PORT}`);
 
-  console.log(`[${BROKER_ID}] Services started: heartbeat, gossip`);
-  console.log(`[${BROKER_ID}] Waiting for connections...`);
-});
+    // Start services
+    try {
+      heartbeatService.startHeartbeats();
+      console.log(`[${BROKER_ID}] Heartbeat service started`);
+    } catch (err) {
+      console.error(`[${BROKER_ID}] Error starting heartbeat service:`, err);
+    }
+
+    try {
+      gossipService.startGossip();
+      console.log(`[${BROKER_ID}] Gossip service started`);
+    } catch (err) {
+      console.error(`[${BROKER_ID}] Error starting gossip service:`, err);
+    }
+
+    console.log(`[${BROKER_ID}] Services started: heartbeat, gossip`);
+    console.log(`[${BROKER_ID}] Waiting for connections...`);
+  });
+
+  // Error handling
+  server.on('error', (err) => {
+    console.error(`[${BROKER_ID}] Server error:`, err);
+  });
+
+  // ==================== Graceful Shutdown ====================
+
+  process.on('SIGTERM', () => {
+    console.log(`\n[${BROKER_ID}] SIGTERM signal received: closing HTTP server`);
+    server.close(() => {
+      console.log(`[${BROKER_ID}] HTTP server closed`);
+      process.exit(0);
+    });
+  });
+
+} catch (error) {
+  console.error(`[${BROKER_ID}] FATAL ERROR during initialization:`, error);
+  console.error(error.stack);
+  process.exit(1);
+}
 
 // ==================== Helpers ====================
 
@@ -109,15 +146,5 @@ function parsePeerBrokers(peerBrokersStr) {
     };
   });
 }
-
-// ==================== Graceful Shutdown ====================
-
-process.on('SIGTERM', () => {
-  console.log(`\n[${BROKER_ID}] SIGTERM signal received: closing HTTP server`);
-  server.close(() => {
-    console.log(`[${BROKER_ID}] HTTP server closed`);
-    process.exit(0);
-  });
-});
 
 module.exports = app;
