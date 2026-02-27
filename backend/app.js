@@ -23,6 +23,15 @@ const agentRouteFactory = require('./routes/agents');
 const app = express();
 app.use(express.json());
 
+// Allow the vanilla frontend (file:// or local dev server) to reach the API
+app.use((req, res, next) => {
+  res.header('Access-Control-Allow-Origin', '*');
+  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  res.header('Access-Control-Allow-Methods', 'GET, POST, DELETE, OPTIONS');
+  if (req.method === 'OPTIONS') return res.sendStatus(200);
+  next();
+});
+
 // ==================== Broker Configuration ====================
 const BROKER_ID = process.env.BROKER_ID || 'broker-unknown';
 const BROKER_PORT = parseInt(process.env.BROKER_PORT, 10) || 5000;

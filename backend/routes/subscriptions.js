@@ -1,6 +1,7 @@
 const express = require('express');
 const pool = require('../db');
 const authenticateToken = require('../middleware/auth');
+const { sendNotification } = require('../websocket');
 
 
 module.exports = (lamportClock) => {
@@ -25,6 +26,39 @@ module.exports = (lamportClock) => {
                 'INSERT INTO subscriptions (user_id, genre, artist, city, state, start_date, end_date, lamport_clock) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *',
                 [userId, genre || null, artist || null, city, state, start_date, end_date, lamp_clock_value]
             );
+
+            // Backfill: find existing events that match this new subscription and notify immediately
+            const existingEvents = await pool.query(
+                `SELECT * FROM events
+                 WHERE city = $1 AND state = $2
+                 AND event_date_time >= NOW()
+                 AND (
+                     ($3::VARCHAR IS NULL AND $4::VARCHAR IS NULL) OR
+                     ($3::VARCHAR IS NOT NULL AND genre = $3) OR
+                     ($4::VARCHAR IS NOT NULL AND artist = $4)
+                 )
+                 ORDER BY event_date_time ASC`,
+                [city, state, genre || null, artist || null]
+            );
+
+            for (const event of existingEvents.rows) {
+                const exists = await pool.query(
+                    'SELECT id FROM notifications WHERE user_id = $1 AND event_id = $2',
+                    [userId, event.id]
+                );
+                if (exists.rows.length === 0) {
+                    await pool.query(
+                        'INSERT INTO notifications (user_id, event_id) VALUES ($1, $2)',
+                        [userId, event.id]
+                    );
+                }
+                sendNotification(userId, {
+                    type: event.priority === 'urgent' ? 'urgent_notification' : 'notification',
+                    event,
+                    source: 'backfill',
+                });
+            }
+
             res.status(201).json({ message: 'Subscription created successfully', subscription: result.rows[0] });
         } catch (err) {
             console.error('Error creating subscription:', err);
