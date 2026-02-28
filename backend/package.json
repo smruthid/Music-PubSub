@@ -2,11 +2,11 @@
   "name": "backend",
   "version": "1.0.0",
   "description": "Distributed pub/sub system for concert notifications",
-  "main": "src/index.js",
+  "main": "app.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "start": "node src/broker.js",
-    "dev": "nodemon src/broker.js",
+    "start": "node app.js",
+    "dev": "nodemon app.js",
     "lint": "eslint .",
     "docker:build": "docker build -t music-pubsub-broker ."
   },
