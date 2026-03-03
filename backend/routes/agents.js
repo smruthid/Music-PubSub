@@ -4,7 +4,7 @@ const axios = require('axios');
 const authenticateToken = require('../middleware/auth');
 const MobileAgent = require('../src/models/MobileAgent');
 
-module.exports = (brokerId, port, peerBrokers) => {
+module.exports = (brokerId, port, registry) => {
     const router = express.Router();
 
     router.post('/', async (req, res) => {
@@ -46,6 +46,9 @@ module.exports = (brokerId, port, peerBrokers) => {
 
             agent.results.push({brokerId: brokerId, data});
 
+            // Read the LIVE peer list from the registry instead of a static array
+            const peerBrokers = registry.getPeers();
+
             const nextBroker = peerBrokers.find(b => !agent.visited_brokers.includes(b.id));
             if (nextBroker) {
                 try {
@@ -80,7 +83,7 @@ module.exports = (brokerId, port, peerBrokers) => {
                 return res.status(400).json({ message: 'Task query parameter is required' });
             }
             const agent = new MobileAgent(task, brokerId);
-            const response = await axios.post(`http://localhost:${port}/agents`, agent.toJSON(), { timeout: 10000 });
+            const response = await axios.post(`http://localhost:${port}/agents`, agent.toJSON(), { timeout: 15000 });
             res.json(response.data);
         } catch (err) {
             console.error(`[${brokerId}] Trending agents error:`, err);

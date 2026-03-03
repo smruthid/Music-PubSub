@@ -1,14 +1,17 @@
 /**
  * Unified Music PubSub Application
- * Combines broker replication endpoints with user-facing API routes
+ * Combines broker replication endpoints with user-facing API routes.
+ * Supports dynamic cluster scaling via seed-broker discovery.
  */
 
 require('dotenv').config();
 
+const os = require('os');
 const express = require('express');
 const http = require('http');
 const pool = require('./db');
 const LamportClock = require('./src/utils/lamportClock');
+const BrokerRegistry = require('./src/services/BrokerRegistry');
 const HeartbeatService = require('./src/services/HeartbeatService');
 const GossipService = require('./src/services/GossipService');
 const HeartbeatController = require('./src/controllers/HeartbeatController');
@@ -33,10 +36,19 @@ app.use((req, res, next) => {
 });
 
 // ==================== Broker Configuration ====================
-const BROKER_ID = process.env.BROKER_ID || 'broker-unknown';
 const BROKER_PORT = parseInt(process.env.BROKER_PORT, 10) || 5000;
 const PORT = parseInt(process.env.PORT, 10) || BROKER_PORT;
-const PEER_BROKERS = process.env.PEER_BROKERS ? parsePeerBrokers(process.env.PEER_BROKERS) : [];
+
+// Auto-generate a unique broker ID from the hostname when not explicitly set.
+// Docker Compose gives each scaled container a unique hostname (e.g. music-pubsub-broker-1).
+const BROKER_ID = process.env.BROKER_ID || `broker-${os.hostname()}`;
+
+// Seed broker for dynamic discovery (non-seed brokers use this to join the cluster)
+const SEED_BROKER = process.env.SEED_BROKER || null; // e.g. "seed-broker:5000"
+const IS_SEED = process.env.IS_SEED === 'true';
+
+// Legacy support: if PEER_BROKERS is provided, parse it as the initial peer list
+const INITIAL_PEERS = process.env.PEER_BROKERS ? parsePeerBrokers(process.env.PEER_BROKERS) : [];
 
 console.log(`
 ╔════════════════════════════════════════════════╗
@@ -44,7 +56,8 @@ console.log(`
 ║                                                ║
 ║ Broker ID: ${BROKER_ID.padEnd(37)}║
 ║ Port: ${PORT.toString().padEnd(43)}║
-║ Peer Brokers: ${PEER_BROKERS.length.toString().padEnd(38)}║
+║ Seed Broker: ${(SEED_BROKER || 'none (I am seed)').padEnd(35)}║
+║ Initial Peers: ${INITIAL_PEERS.length.toString().padEnd(33)}║
 ╚════════════════════════════════════════════════╝
 `);
 
@@ -53,17 +66,19 @@ try {
   const lamportClock = new LamportClock(0, BROKER_ID);
   console.log(`[${BROKER_ID}] Lamport Clock initialized`);
 
-  // Initialize Services
-  const heartbeatService = new HeartbeatService(BROKER_ID, PORT, PEER_BROKERS, lamportClock);
+  // Initialize Broker Registry (manages dynamic cluster membership)
+  const registry = new BrokerRegistry(BROKER_ID, PORT, lamportClock);
+  console.log(`[${BROKER_ID}] BrokerRegistry initialized`);
+
+  // Initialize Services — start with INITIAL_PEERS (may be empty for dynamic mode)
+  const heartbeatService = new HeartbeatService(BROKER_ID, PORT, [...INITIAL_PEERS], lamportClock);
   console.log(`[${BROKER_ID}] HeartbeatService initialized`);
 
-  const gossipService = new GossipService(BROKER_ID, PORT, PEER_BROKERS, lamportClock, {
+  const gossipService = new GossipService(BROKER_ID, PORT, [...INITIAL_PEERS], lamportClock, {
     saveEvent: async (eventData) => {
       const { title, artist, genre, city, state, venue, event_date_time, priority } = eventData.payload;
 
-      // Skip if a matching event already exists (idempotency for replicated events)
-      // All brokers share the same DB, so the event may already exist (saved by the
-      // originating broker). Get it if present, otherwise insert it.
+      // Idempotency: all brokers share the same DB, so the event may already exist
       const existing = await pool.query(
         'SELECT * FROM events WHERE title = $1 AND artist = $2 AND venue = $3 AND event_date_time = $4',
         [title, artist, venue, event_date_time]
@@ -80,7 +95,7 @@ try {
         event = result.rows[0];
       }
 
-      // Find subscribers matching this event on the shared DB
+      // Find subscribers matching this event
       const matchingResult = await pool.query(
         `SELECT DISTINCT s.user_id
          FROM subscriptions s
@@ -95,7 +110,6 @@ try {
       );
 
       for (const row of matchingResult.rows) {
-        // Avoid duplicate notification records (originating broker may have already inserted one)
         const notifExists = await pool.query(
           'SELECT id FROM notifications WHERE user_id = $1 AND event_id = $2',
           [row.user_id, event.id]
@@ -106,7 +120,6 @@ try {
             [row.user_id, event.id]
           );
         }
-        // Always push via WebSocket — this broker may have clients the originating broker doesn't
         sendNotification(row.user_id, {
           type: priority === 'urgent' ? 'urgent_notification' : 'notification',
           event,
@@ -119,8 +132,38 @@ try {
   });
   console.log(`[${BROKER_ID}] GossipService initialized`);
 
+  // ==================== Wire Registry ↔ Services ====================
+
+  // When a new peer is discovered, add it to heartbeat + gossip
+  registry.onPeerAdded = (peer) => {
+    heartbeatService.addPeer(peer);
+    gossipService.addPeer(peer);
+  };
+
+  // When a peer is removed, remove it from heartbeat + gossip
+  registry.onPeerRemoved = (brokerId) => {
+    heartbeatService.removePeer(brokerId);
+    gossipService.removePeer(brokerId);
+  };
+
+  // When a heartbeat succeeds, refresh that peer's lastSeen in the registry
+  heartbeatService.onHeartbeatSuccess = (brokerId) => {
+    registry.refreshPeer(brokerId);
+  };
+
+  // When a broker is confirmed dead (10 consecutive missed heartbeats), remove from registry
+  heartbeatService.onBrokerDead = (brokerId) => {
+    console.log(`[${BROKER_ID}] Broker ${brokerId} confirmed dead, removing from cluster`);
+    registry.removePeer(brokerId);
+  };
+
   // Wire queue size into heartbeat reporting
   heartbeatService.queueSizeCallback = () => gossipService.getQueueSize();
+
+  // Pre-populate the registry with any initial (legacy) peers
+  for (const peer of INITIAL_PEERS) {
+    registry.addPeer(peer);
+  }
 
   // Initialize Controllers
   const heartbeatController = new HeartbeatController(heartbeatService, lamportClock);
@@ -131,10 +174,10 @@ try {
   app.use('/auth', authRoutes);
   app.use('/subscriptions', subscriptionRouteFactory(lamportClock));
   app.use('/events', eventRouteFactory(gossipService, lamportClock));
-  app.use('/agents', agentRouteFactory(BROKER_ID, PORT, PEER_BROKERS));
+  app.use('/agents', agentRouteFactory(BROKER_ID, PORT, registry));
 
   // ==================== Broker API Routes ====================
-  app.get('/health', (req, res) => {
+  app.get('/health', (_req, res) => {
     res.json({ status: 'ok', broker_id: BROKER_ID, timestamp: Date.now() });
   });
 
@@ -158,6 +201,51 @@ try {
     replicationController.getReplicationStatus(req, res);
   });
 
+  // ==================== Dynamic Cluster Discovery API ====================
+
+  /**
+   * POST /api/cluster/register
+   * Called by a new broker to register itself with this broker.
+   * This broker responds with its full list of known peers so the
+   * new broker can announce itself to everyone.
+   */
+  app.post('/api/cluster/register', (req, res) => {
+    const { broker_id, host, port: peerPort, lamport_clock: remoteClock } = req.body;
+    if (!broker_id || !host || !peerPort) {
+      return res.status(400).json({ error: 'broker_id, host, and port are required' });
+    }
+    if (remoteClock) {
+      lamportClock.receive(remoteClock);
+    }
+
+    // Add the new peer to our registry (this also triggers onPeerAdded → heartbeat + gossip)
+    registry.addPeer({ id: broker_id, host, port: peerPort });
+
+    // Build the full peer list: all known peers + ourselves
+    const allPeers = registry.getPeers().map(p => ({ id: p.id, host: p.host, port: p.port }));
+    allPeers.push({ id: BROKER_ID, host: BROKER_ID, port: PORT });
+
+    res.json({
+      status: 'ok',
+      broker_id: BROKER_ID,
+      lamport_clock: lamportClock.getValue(),
+      peers: allPeers,
+      cluster_size: registry.getPeerCount() + 1,
+    });
+  });
+
+  /**
+   * GET /api/cluster/members
+   * Returns the current cluster membership as seen by this broker.
+   */
+  app.get('/api/cluster/members', (_req, res) => {
+    res.json({
+      self: { id: BROKER_ID, port: PORT },
+      peers: registry.getPeers(),
+      cluster_size: registry.getPeerCount() + 1,
+    });
+  });
+
   // ==================== Startup ====================
   const server = http.createServer(app);
   setupWebSocket(server);
@@ -177,6 +265,18 @@ try {
       console.log(`[${BROKER_ID}] Gossip service started`);
     } catch (err) {
       console.error(`[${BROKER_ID}] Error starting gossip service:`, err);
+    }
+
+    // Start the registry's dead-peer cleanup loop
+    registry.start();
+
+    // If we're not the seed broker, join the cluster via the seed
+    if (SEED_BROKER && !IS_SEED) {
+      const [seedHost, seedPort] = SEED_BROKER.split(':');
+      console.log(`[${BROKER_ID}] Will join cluster via seed ${seedHost}:${seedPort} in 3 seconds...`);
+      setTimeout(() => {
+        registry.joinCluster(seedHost, parseInt(seedPort, 10));
+      }, 3000);
     }
 
     console.log(`[${BROKER_ID}] All services started. Waiting for connections...`);

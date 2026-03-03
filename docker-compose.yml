@@ -18,12 +18,12 @@ services:
       timeout: 5s
       retries: 5
 
-  # Seed broker — the first broker that others discover through
   seed-broker:
     build:
       context: ./backend
       dockerfile: Dockerfile
     environment:
+      BROKER_ID: seed-broker
       BROKER_PORT: 5000
       DB_HOST: postgres
       DB_PORT: 5432
@@ -40,7 +40,6 @@ services:
     networks:
       - pubsub-network
 
-  # Scalable broker — run N of these with --scale
   broker:
     build:
       context: ./backend

@@ -123,6 +123,26 @@ class GossipService {
     getCurrentSeq() {
         return this.seqNumber;
     }
+
+    /**
+     * Dynamically add a new peer broker at runtime.
+     */
+    addPeer(broker) {
+        if (!this.peerBrokers.find(b => b.id === broker.id)) {
+            this.peerBrokers.push(broker);
+            this.brokerSeqTracking.set(broker.id, 0);
+            console.log(`[${this.brokerId}] GossipService: peer added → ${broker.id}`);
+        }
+    }
+
+    /**
+     * Dynamically remove a peer broker at runtime.
+     */
+    removePeer(brokerId) {
+        this.peerBrokers = this.peerBrokers.filter(b => b.id !== brokerId);
+        this.brokerSeqTracking.delete(brokerId);
+        console.log(`[${this.brokerId}] GossipService: peer removed → ${brokerId}`);
+    }
 }
 
 module.exports = GossipService;
