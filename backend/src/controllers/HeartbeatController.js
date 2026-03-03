@@ -7,25 +7,34 @@ class HeartbeatController {
 
     receiveHeartbeat(req, res) {
         try {
-            const { broker_id, lamport_clock } = req.body;
+            const { broker_id, host, port, lamport_clock } = req.body;
 
             if (lamport_clock) {
                 this.lamportClock.receive(lamport_clock);
             }
 
-            // When we RECEIVE a heartbeat from a peer, refresh their lastSeen
-            // in the registry so they don't get cleaned up.
-            // Also re-register them if they were previously removed.
-            if (broker_id && this.registry) {
-                const ip = req.ip || req.connection.remoteAddress;
-                this.registry.refreshPeer(broker_id);
+            if (broker_id) {
+                // Refresh the peer in the registry so they don't get cleaned up
+                if (this.registry) {
+                    this.registry.refreshPeer(broker_id);
 
-                // If this broker isn't in the registry yet (e.g. it was cleaned up),
-                // re-add it using info from the heartbeat
-                if (!this.registry.peers.has(broker_id)) {
-                    const port = req.body.port || 5000;
-                    const host = req.body.host || broker_id;
-                    this.registry.addPeer({ id: broker_id, host, port });
+                    // If this broker isn't in the registry (e.g. it was cleaned up), re-add it
+                    if (!this.registry.peers.has(broker_id)) {
+                        this.registry.addPeer({
+                            id: broker_id,
+                            host: host || broker_id,
+                            port: port || 5000,
+                        });
+                    }
+                }
+
+                // Reset the health tracking in HeartbeatService so it doesn't
+                // mark this broker as unhealthy while it's actively sending us heartbeats
+                if (this.heartbeatService.brokerHealth.has(broker_id)) {
+                    const health = this.heartbeatService.brokerHealth.get(broker_id);
+                    health.healthy = true;
+                    health.lastHeartbeatTime = Date.now();
+                    health.consecutiveMisses = 0;
                 }
             }
 
