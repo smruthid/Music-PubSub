@@ -11,6 +11,15 @@ class HeartbeatService {
         this.heartbeatTimeout = 15000;
         this.brokerHealth = new Map();
 
+        // Callback fired when a broker is confirmed dead (10 consecutive misses)
+        this.onBrokerDead = null;
+
+        // Callback to get gossip queue size for heartbeat messages
+        this.queueSizeCallback = null;
+
+        // Callback to refresh peer's lastSeen in the registry
+        this.onHeartbeatSuccess = null;
+
         this.initializeBrokerHealth();
     }
 
@@ -65,6 +74,11 @@ class HeartbeatService {
                 health.consecutiveMisses = 0;
             }
 
+            // Notify registry that this peer is alive
+            if (this.onHeartbeatSuccess) {
+                this.onHeartbeatSuccess(broker.id);
+            }
+
             console.log(`[${this.brokerId}] ✓ Heartbeat sent to ${broker.id}`);
         } catch (error) {
             this.handleHeartbeatFailure(broker);
@@ -85,13 +99,19 @@ class HeartbeatService {
                 `[${this.brokerId}] ⚠ Broker ${broker.id} marked as unhealthy (${health.missedHeartbeats} misses)`
             );
         }
+
+        // After 10 consecutive misses, consider the broker dead
+        if (health.consecutiveMisses >= 10 && this.onBrokerDead) {
+            console.log(`[${this.brokerId}] ✗ Broker ${broker.id} confirmed dead after ${health.consecutiveMisses} misses`);
+            this.onBrokerDead(broker.id);
+        }
     }
 
     checkBrokerHealth() {
         let healthy = 0;
         this.brokerHealth.forEach(h => { if (h.healthy) healthy++; });
         const total = this.peerBrokers.length + 1; // +1 for self
-        console.log(`[${this.brokerId}] Cluster health: ${healthy}/${total} brokers healthy`);
+        console.log(`[${this.brokerId}] Cluster health: ${healthy + 1}/${total} brokers healthy (including self)`);
     }
 
     getBrokerHealth(brokerId) {
@@ -106,6 +126,31 @@ class HeartbeatService {
         let healthyCount = 0;
         this.brokerHealth.forEach(h => { if (h.healthy) healthyCount++; });
         return healthyCount >= Math.ceil(this.peerBrokers.length / 2);
+    }
+
+    /**
+     * Dynamically add a new peer broker at runtime.
+     */
+    addPeer(broker) {
+        if (!this.peerBrokers.find(b => b.id === broker.id)) {
+            this.peerBrokers.push(broker);
+            this.brokerHealth.set(broker.id, {
+                healthy: true,
+                lastHeartbeatTime: Date.now(),
+                missedHeartbeats: 0,
+                consecutiveMisses: 0,
+            });
+            console.log(`[${this.brokerId}] HeartbeatService: peer added → ${broker.id}`);
+        }
+    }
+
+    /**
+     * Dynamically remove a peer broker at runtime.
+     */
+    removePeer(brokerId) {
+        this.peerBrokers = this.peerBrokers.filter(b => b.id !== brokerId);
+        this.brokerHealth.delete(brokerId);
+        console.log(`[${this.brokerId}] HeartbeatService: peer removed → ${brokerId}`);
     }
 }
 
