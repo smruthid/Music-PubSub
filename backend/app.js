@@ -40,11 +40,11 @@ const BROKER_PORT = parseInt(process.env.BROKER_PORT, 10) || 5000;
 const PORT = parseInt(process.env.PORT, 10) || BROKER_PORT;
 
 // Auto-generate a unique broker ID from the hostname when not explicitly set.
-// Docker Compose gives each scaled container a unique hostname (e.g. music-pubsub-broker-1).
+// Docker Compose gives each scaled container a unique hostname.
 const BROKER_ID = process.env.BROKER_ID || `broker-${os.hostname()}`;
 
 // Seed broker for dynamic discovery (non-seed brokers use this to join the cluster)
-const SEED_BROKER = process.env.SEED_BROKER || null; // e.g. "seed-broker:5000"
+const SEED_BROKER = process.env.SEED_BROKER || null;
 const IS_SEED = process.env.IS_SEED === 'true';
 
 // Legacy support: if PEER_BROKERS is provided, parse it as the initial peer list
@@ -165,8 +165,8 @@ try {
     registry.addPeer(peer);
   }
 
-  // Initialize Controllers
-  const heartbeatController = new HeartbeatController(heartbeatService, lamportClock);
+  // Initialize Controllers — pass registry to HeartbeatController
+  const heartbeatController = new HeartbeatController(heartbeatService, lamportClock, registry);
   const replicationController = new ReplicationController(gossipService, heartbeatService, lamportClock);
   console.log(`[${BROKER_ID}] Controllers initialized`);
 
@@ -203,12 +203,6 @@ try {
 
   // ==================== Dynamic Cluster Discovery API ====================
 
-  /**
-   * POST /api/cluster/register
-   * Called by a new broker to register itself with this broker.
-   * This broker responds with its full list of known peers so the
-   * new broker can announce itself to everyone.
-   */
   app.post('/api/cluster/register', (req, res) => {
     const { broker_id, host, port: peerPort, lamport_clock: remoteClock } = req.body;
     if (!broker_id || !host || !peerPort) {
@@ -218,10 +212,8 @@ try {
       lamportClock.receive(remoteClock);
     }
 
-    // Add the new peer to our registry (this also triggers onPeerAdded → heartbeat + gossip)
     registry.addPeer({ id: broker_id, host, port: peerPort });
 
-    // Build the full peer list: all known peers + ourselves
     const allPeers = registry.getPeers().map(p => ({ id: p.id, host: p.host, port: p.port }));
     allPeers.push({ id: BROKER_ID, host: BROKER_ID, port: PORT });
 
@@ -234,10 +226,6 @@ try {
     });
   });
 
-  /**
-   * GET /api/cluster/members
-   * Returns the current cluster membership as seen by this broker.
-   */
   app.get('/api/cluster/members', (_req, res) => {
     res.json({
       self: { id: BROKER_ID, port: PORT },
@@ -267,10 +255,8 @@ try {
       console.error(`[${BROKER_ID}] Error starting gossip service:`, err);
     }
 
-    // Start the registry's dead-peer cleanup loop
     registry.start();
 
-    // If we're not the seed broker, join the cluster via the seed
     if (SEED_BROKER && !IS_SEED) {
       const [seedHost, seedPort] = SEED_BROKER.split(':');
       console.log(`[${BROKER_ID}] Will join cluster via seed ${seedHost}:${seedPort} in 3 seconds...`);

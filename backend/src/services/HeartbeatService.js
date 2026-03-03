@@ -47,6 +47,8 @@ class HeartbeatService {
         const message = {
             type: 'heartbeat',
             broker_id: this.brokerId,
+            host: this.brokerId,
+            port: this.port,
             timestamp: Date.now(),
             lamport_clock: this.lamportClock.increment(),
             status: 'healthy',

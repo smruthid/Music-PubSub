@@ -1,7 +1,8 @@
 class HeartbeatController {
-    constructor(heartbeatService, lamportClock) {
+    constructor(heartbeatService, lamportClock, registry) {
         this.heartbeatService = heartbeatService;
         this.lamportClock = lamportClock;
+        this.registry = registry;
     }
 
     receiveHeartbeat(req, res) {
@@ -10,6 +11,22 @@ class HeartbeatController {
 
             if (lamport_clock) {
                 this.lamportClock.receive(lamport_clock);
+            }
+
+            // When we RECEIVE a heartbeat from a peer, refresh their lastSeen
+            // in the registry so they don't get cleaned up.
+            // Also re-register them if they were previously removed.
+            if (broker_id && this.registry) {
+                const ip = req.ip || req.connection.remoteAddress;
+                this.registry.refreshPeer(broker_id);
+
+                // If this broker isn't in the registry yet (e.g. it was cleaned up),
+                // re-add it using info from the heartbeat
+                if (!this.registry.peers.has(broker_id)) {
+                    const port = req.body.port || 5000;
+                    const host = req.body.host || broker_id;
+                    this.registry.addPeer({ id: broker_id, host, port });
+                }
             }
 
             console.log(`[Heartbeat] Received from ${broker_id} at clock ${lamport_clock}`);
