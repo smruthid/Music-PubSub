@@ -1,0 +1,11 @@
+.ws-dot {
+    display: inline-block;
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    background: #6c757d;
+}
+
+.ws-dot.connected {
+    background: #198754;
+}

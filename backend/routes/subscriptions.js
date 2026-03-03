@@ -72,6 +72,24 @@ module.exports = (lamportClock) => {
         }
     });
 
+    //get all notifications for the authenticated user
+    router.get('/notifications', authenticateToken, async (req, res) => {
+        try {
+            const result = await pool.query(
+                `SELECT n.sent_at, e.*
+                 FROM notifications n
+                 JOIN events e ON e.id = n.event_id
+                 WHERE n.user_id = $1
+                 ORDER BY n.sent_at DESC`,
+                [req.userId]
+            );
+            res.json({ notifications: result.rows });
+        } catch (err) {
+            console.error('Error fetching notifications:', err);
+            res.status(500).json({ message: 'Internal server error' });
+        }
+    });
+
     //get all subscriptions for the authenticated user
     router.get('/', authenticateToken, async (req, res) => {
         try {

@@ -29,13 +29,13 @@ module.exports = (gossipService, lamportClock) => {
                 `SELECT DISTINCT s.user_id
                  FROM subscriptions s
                  WHERE s.city = $1 AND s.state = $2
-                 AND CURRENT_DATE BETWEEN s.start_date AND s.end_date
+                 AND $5::DATE BETWEEN s.start_date AND s.end_date
                  AND (
                     (s.genre IS NULL AND s.artist IS NULL) OR
                     (s.genre IS NOT NULL AND s.genre = $3) OR
                     (s.artist IS NOT NULL AND s.artist = $4)
                  )`,
-                [city, state, genre, artist]
+                [city, state, genre, artist, event_date_time]
             );
 
             const matchedUsers = matchingResult.rows.map(row => row.user_id);

@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Subscribe — Music PubSub</title>
+    <link href="bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <nav class="navbar navbar-expand navbar-dark bg-dark px-3">
+        <a class="navbar-brand" href="index.html">Music PubSub</a>
+        <div class="navbar-nav ms-auto">
+            <a class="nav-link" href="publish.html">Publish</a>
+            <a class="nav-link active" href="subscribe.html">Subscribe</a>
+        </div>
+        <span class="navbar-text ms-3 text-secondary small" id="navUser"></span>
+        <a href="#" class="btn btn-sm btn-outline-secondary ms-3" id="logoutBtn">Logout</a>
+    </nav>
+
+    <div class="container-fluid py-4">
+        <div class="row g-4">
+
+            <!-- Left column: subscription management -->
+            <div class="col-md-5 d-flex flex-column gap-4">
+
+                <!-- Create subscription -->
+                <div class="card">
+                    <div class="card-header fw-semibold">New Subscription</div>
+                    <div class="card-body">
+                        <div id="subMsg" class="mb-3"></div>
+                        <form id="subForm">
+                            <div class="mb-3">
+                                <label class="form-label">Filter by</label>
+                                <div class="d-flex gap-3">
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="radio" name="filterType" id="filterLocation" value="location" checked>
+                                        <label class="form-check-label" for="filterLocation">Location only</label>
+                                    </div>
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="radio" name="filterType" id="filterGenre" value="genre">
+                                        <label class="form-check-label" for="filterGenre">Genre</label>
+                                    </div>
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="radio" name="filterType" id="filterArtist" value="artist">
+                                        <label class="form-check-label" for="filterArtist">Artist</label>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="mb-3" id="genreGroup" style="display:none;">
+                                <label for="genre" class="form-label">Genre</label>
+                                <input type="text" class="form-control" id="genre" placeholder="e.g. Jazz">
+                            </div>
+                            <div class="mb-3" id="artistGroup" style="display:none;">
+                                <label for="artist" class="form-label">Artist</label>
+                                <input type="text" class="form-control" id="artist" placeholder="e.g. Kendrick Lamar">
+                            </div>
+
+                            <div class="row g-2 mb-3">
+                                <div class="col">
+                                    <label for="city" class="form-label">City</label>
+                                    <input type="text" class="form-control" id="city" placeholder="e.g. Chicago" required>
+                                </div>
+                                <div class="col">
+                                    <label for="state" class="form-label">State</label>
+                                    <input type="text" class="form-control" id="state" placeholder="e.g. IL" required>
+                                </div>
+                            </div>
+
+                            <div class="row g-2 mb-3">
+                                <div class="col">
+                                    <label for="start_date" class="form-label">From</label>
+                                    <input type="date" class="form-control" id="start_date" required>
+                                </div>
+                                <div class="col">
+                                    <label for="end_date" class="form-label">Until</label>
+                                    <input type="date" class="form-control" id="end_date" required>
+                                </div>
+                            </div>
+
+                            <button type="submit" class="btn btn-primary w-100" id="subBtn">Subscribe</button>
+                        </form>
+                    </div>
+                </div>
+
+                <!-- My subscriptions -->
+                <div class="card">
+                    <div class="card-header fw-semibold">My Subscriptions</div>
+                    <div class="card-body p-0" id="subList">
+                        <p class="text-secondary text-center p-3 mb-0">No subscriptions yet</p>
+                    </div>
+                </div>
+
+            </div>
+
+            <!-- Right column: live notification feed -->
+            <div class="col-md-7">
+                <div class="card h-100">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <span class="fw-semibold">Live Notifications</span>
+                        <span class="d-flex align-items-center small text-secondary">
+                            <span class="ws-dot me-1" id="wsDot"></span>
+                            <span id="wsStatusText">Connecting…</span>
+                        </span>
+                    </div>
+                    <div class="card-body p-0 overflow-auto" style="max-height: 620px;" id="notifFeed">
+                        <p class="text-secondary text-center p-4 mb-0" id="emptyNotif">Waiting for events…</p>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <script src="api.js"></script>
+    <script>
+        requireAuth();
+
+        const user = getUser();
+        document.getElementById('navUser').textContent = user ? user.username : '';
+        document.getElementById('logoutBtn').addEventListener('click', (e) => { e.preventDefault(); logout(); });
+
+        // ── Filter type toggle ──────────────────────────────────────────────────
+        const radios      = document.querySelectorAll('input[name="filterType"]');
+        const genreGroup  = document.getElementById('genreGroup');
+        const artistGroup = document.getElementById('artistGroup');
+
+        function updateFilterFields() {
+            const type = document.querySelector('input[name="filterType"]:checked').value;
+            genreGroup.style.display  = type === 'genre'  ? '' : 'none';
+            artistGroup.style.display = type === 'artist' ? '' : 'none';
+        }
+
+        radios.forEach(r => r.addEventListener('change', updateFilterFields));
+
+        // ── Subscription form ───────────────────────────────────────────────────
+        const subForm = document.getElementById('subForm');
+        const subMsg  = document.getElementById('subMsg');
+        const subBtn  = document.getElementById('subBtn');
+
+        function showSubMsg(text, type) {
+            subMsg.innerHTML = `<div class="alert alert-${type === 'error' ? 'danger' : 'success'} py-2">${text}</div>`;
+            if (type === 'success') setTimeout(() => { subMsg.innerHTML = ''; }, 3000);
+        }
+
+        subForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            subBtn.disabled = true;
+            subBtn.textContent = 'Subscribing…';
+
+            const filterType = document.querySelector('input[name="filterType"]:checked').value;
+            const body = {
+                city:       document.getElementById('city').value.trim(),
+                state:      document.getElementById('state').value.trim(),
+                start_date: document.getElementById('start_date').value,
+                end_date:   document.getElementById('end_date').value,
+            };
+            if (filterType === 'genre')  body.genre  = document.getElementById('genre').value.trim();
+            if (filterType === 'artist') body.artist = document.getElementById('artist').value.trim();
+
+            try {
+                await apiFetch('/subscriptions', { method: 'POST', body: JSON.stringify(body) });
+                showSubMsg('Subscribed!', 'success');
+                subForm.reset();
+                updateFilterFields();
+                loadSubs();
+            } catch (err) {
+                showSubMsg(err.message, 'error');
+            } finally {
+                subBtn.disabled = false;
+                subBtn.textContent = 'Subscribe';
+            }
+        });
+
+        // ── Subscription list ───────────────────────────────────────────────────
+        const subList = document.getElementById('subList');
+
+        function formatSub(sub) {
+            const filter = sub.genre
+                ? `Genre: <strong>${sub.genre}</strong>`
+                : sub.artist
+                ? `Artist: <strong>${sub.artist}</strong>`
+                : 'Location only';
+
+            return `
+                <div class="d-flex justify-content-between align-items-center p-3 border-bottom">
+                    <div class="small">
+                        ${filter}<br>
+                        <strong>${sub.city}, ${sub.state}</strong> &nbsp;·&nbsp;
+                        ${sub.start_date.slice(0,10)} → ${sub.end_date.slice(0,10)}
+                    </div>
+                    <button class="btn btn-sm btn-outline-danger ms-2" onclick="deleteSub(${sub.id})">Remove</button>
+                </div>`;
+        }
+
+        async function loadSubs() {
+            try {
+                const data = await apiFetch('/subscriptions');
+                subList.innerHTML = data.subscriptions.length === 0
+                    ? '<p class="text-secondary text-center p-3 mb-0">No subscriptions yet</p>'
+                    : data.subscriptions.map(formatSub).join('');
+            } catch (err) {
+                subList.innerHTML = `<p class="text-danger text-center p-3 mb-0">${err.message}</p>`;
+            }
+        }
+
+        async function deleteSub(id) {
+            try {
+                await apiFetch(`/subscriptions/${id}`, { method: 'DELETE' });
+                loadSubs();
+            } catch (err) {
+                alert(err.message);
+            }
+        }
+
+        loadSubs();
+
+        // ── WebSocket / notification feed ───────────────────────────────────────
+        const feed         = document.getElementById('notifFeed');
+        const emptyNotif   = document.getElementById('emptyNotif');
+        const wsDot        = document.getElementById('wsDot');
+        const wsStatusText = document.getElementById('wsStatusText');
+
+        function setWsStatus(connected) {
+            wsDot.className          = `ws-dot me-1${connected ? ' connected' : ''}`;
+            wsStatusText.textContent = connected ? 'Connected' : 'Disconnected';
+        }
+
+        function addNotification(data) {
+            if (data.type === 'connected') { setWsStatus(true); return; }
+
+            const ev     = data.event || {};
+            const urgent = data.type === 'urgent_notification';
+
+            if (emptyNotif) emptyNotif.remove();
+
+            const el = document.createElement('div');
+            el.className = `p-3 border-bottom${urgent ? ' border-start border-danger border-3' : ''}`;
+
+            const dt = ev.event_date_time
+                ? new Date(ev.event_date_time).toLocaleString()
+                : '';
+
+            el.innerHTML = `
+                <div class="d-flex justify-content-between align-items-start mb-1">
+                    <strong>${ev.title || 'New Event'}</strong>
+                    <span class="badge ${urgent ? 'bg-danger' : 'bg-primary'} ms-2">${urgent ? 'URGENT' : 'new'}</span>
+                </div>
+                <div class="text-secondary small">
+                    ${ev.artist || ''} · ${ev.genre || ''} · ${ev.venue || ''}<br>
+                    ${ev.city || ''}, ${ev.state || ''} · ${dt}
+                    ${data.source === 'replicated' ? ' <em>(replicated)</em>' : ''}
+                    ${data.source === 'backfill' ? ' <em>(existing)</em>' : ''}
+                </div>`;
+
+            feed.insertBefore(el, feed.firstChild);
+        }
+
+        const ws = connectWebSocket(addNotification);
+        if (ws) {
+            ws.addEventListener('open',  () => setWsStatus(true));
+            ws.addEventListener('close', () => setWsStatus(false));
+        } else {
+            setWsStatus(false);
+        }
+
+        // Load existing notifications from DB so already-subscribed users see events on page load
+        async function loadNotifications() {
+            try {
+                const data = await apiFetch('/subscriptions/notifications');
+                data.notifications.forEach(row => {
+                    addNotification({
+                        type: row.priority === 'urgent' ? 'urgent_notification' : 'notification',
+                        event: row,
+                    });
+                });
+            } catch (err) {
+                console.warn('Could not load notifications:', err.message);
+            }
+        }
+
+        loadNotifications();
+    </script>
+</body>
+</html>

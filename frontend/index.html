@@ -1,0 +1,17 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Music PubSub</title>
+</head>
+<body>
+    <script>
+        // Entry point — send logged-in users to the subscribe page, others to login
+        if (localStorage.getItem('token')) {
+            window.location.href = 'subscribe.html';
+        } else {
+            window.location.href = 'login.html';
+        }
+    </script>
+</body>
+</html>
