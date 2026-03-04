@@ -14,6 +14,7 @@ class ReplicationController {
                 broker_id: this.gossipService.brokerId,
                 lamport_clock: this.lamportClock.getValue(),
                 processed: result.processed,
+                duplicates: result.duplicates || 0,
             });
         } catch (error) {
             console.error('[ReplicationController] Gossip error:', error);
@@ -49,6 +50,8 @@ class ReplicationController {
                 broker_id: this.gossipService.brokerId,
                 queue_size: this.gossipService.getQueueSize(),
                 current_seq: this.gossipService.getCurrentSeq(),
+                seen_messages: this.gossipService.seenMessages.size,
+                max_hops: this.gossipService.maxHops,
                 broker_health: this.heartbeatService.getAllBrokerHealth(),
                 lamport_clock: this.lamportClock.getValue(),
             });
