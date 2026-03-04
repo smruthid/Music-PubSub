@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login — Music PubSub</title>
+    <link href="bootstrap.min.css" rel="stylesheet">
+</head>
+<body class="d-flex align-items-center justify-content-center min-vh-100 bg-body-tertiary">
+
+    <div class="card" style="width: 100%; max-width: 420px;">
+        <div class="card-body">
+            <h4 class="card-title text-center">Music PubSub</h4>
+            <p class="text-center">Sign in to your account</p>
+
+            <div id="msg" class="mb-3"></div>
+
+            <form id="loginForm">
+                <div class="mb-3">
+                    <label for="username" class="form-label">Username</label>
+                    <input type="text" class="form-control" id="username" placeholder="username" required autocomplete="username">
+                </div>
+                <div class="mb-4">
+                    <label for="password" class="form-label">Password</label>
+                    <input type="password" class="form-control" id="password" placeholder="••••••••" required autocomplete="current-password">
+                </div>
+                <button type="submit" class="btn btn-primary w-100" id="submitBtn">Sign in</button>
+            </form>
+
+            <p class="text-center text-secondary mt-3 mb-0">
+                Don't have an account? <a href="signup.html">Sign up</a>
+            </p>
+        </div>
+    </div>
+
+    <script src="api.js"></script>
+    <script>
+        if (getToken()) window.location.href = 'subscribe.html';
+
+        const form = document.getElementById('loginForm');
+        const msg  = document.getElementById('msg');
+        const btn  = document.getElementById('submitBtn');
+
+        function showMsg(text, type) {
+            msg.innerHTML = `<div class="alert alert-${type === 'error' ? 'danger' : 'success'} py-2">${text}</div>`;
+        }
+
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            btn.disabled = true;
+            btn.textContent = 'Signing in…';
+
+            try {
+                const data = await apiFetch('/auth/login', {
+                    method: 'POST',
+                    body: JSON.stringify({
+                        username: document.getElementById('username').value.trim(),
+                        password: document.getElementById('password').value,
+                    }),
+                });
+
+                saveAuth(data.token, data.user);
+                window.location.href = 'subscribe.html';
+            } catch (err) {
+                showMsg(err.message, 'error');
+                btn.disabled = false;
+                btn.textContent = 'Sign in';
+            }
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Publish Event — Music PubSub</title>
+    <link href="bootstrap.min.css" rel="stylesheet">
+</head>
+<body>
+    <nav class="navbar navbar-expand navbar-dark bg-dark px-3">
+        <a class="navbar-brand" href="index.html">Music PubSub</a>
+        <div class="navbar-nav ms-auto">
+            <a class="nav-link active" href="publish.html">Publish</a>
+            <a class="nav-link" href="subscribe.html">Subscribe</a>
+        </div>
+        <span class="navbar-text ms-3 text-secondary small" id="navUser"></span>
+        <a href="#" class="btn btn-sm btn-outline-secondary ms-3" id="logoutBtn">Logout</a>
+    </nav>
+
+    <div class="container-fluid py-4">
+        <div class="row g-4">
+
+            <!-- Publish form -->
+            <div class="col-md-6">
+                <div class="card h-100">
+                    <div class="card-header fw-semibold">Publish a Concert Event</div>
+                    <div class="card-body">
+                        <div id="msg" class="mb-3"></div>
+                        <form id="publishForm">
+                            <div class="mb-3">
+                                <label for="title" class="form-label">Event Title</label>
+                                <input type="text" class="form-control" id="title" placeholder="e.g. Taylor Swift — The Eras Tour" required>
+                            </div>
+                            <div class="row g-2 mb-3">
+                                <div class="col">
+                                    <label for="artist" class="form-label">Artist</label>
+                                    <input type="text" class="form-control" id="artist" placeholder="e.g. Taylor Swift" required>
+                                </div>
+                                <div class="col">
+                                    <label for="genre" class="form-label">Genre</label>
+                                    <input type="text" class="form-control" id="genre" placeholder="e.g. Pop" required>
+                                </div>
+                            </div>
+                            <div class="mb-3">
+                                <label for="venue" class="form-label">Venue</label>
+                                <input type="text" class="form-control" id="venue" placeholder="e.g. Madison Square Garden" required>
+                            </div>
+                            <div class="row g-2 mb-3">
+                                <div class="col">
+                                    <label for="city" class="form-label">City</label>
+                                    <input type="text" class="form-control" id="city" placeholder="e.g. New York" required>
+                                </div>
+                                <div class="col">
+                                    <label for="state" class="form-label">State</label>
+                                    <input type="text" class="form-control" id="state" placeholder="e.g. NY" required>
+                                </div>
+                            </div>
+                            <div class="mb-3">
+                                <label for="event_date_time" class="form-label">Date & Time</label>
+                                <input type="datetime-local" class="form-control" id="event_date_time" required>
+                            </div>
+                            <div class="mb-3">
+                                <label for="priority" class="form-label">Priority</label>
+                                <select class="form-select" id="priority">
+                                    <option value="normal">Normal</option>
+                                    <option value="urgent">Urgent (cancellation / venue change)</option>
+                                </select>
+                            </div>
+                            <button type="submit" class="btn btn-primary w-100" id="submitBtn">Publish Event</button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Recent events -->
+            <div class="col-md-6">
+                <div class="card h-100">
+                    <div class="card-header fw-semibold">Recent Events</div>
+                    <div class="card-body p-0 overflow-auto" style="max-height: 600px;" id="eventList">
+                        <p class="text-secondary text-center p-4 mb-0">No events yet</p>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <script src="api.js"></script>
+    <script>
+        requireAuth();
+
+        const user = getUser();
+        document.getElementById('navUser').textContent = user ? user.username : '';
+        document.getElementById('logoutBtn').addEventListener('click', (e) => { e.preventDefault(); logout(); });
+
+        const form = document.getElementById('publishForm');
+        const msg  = document.getElementById('msg');
+        const btn  = document.getElementById('submitBtn');
+        const list = document.getElementById('eventList');
+
+        function showMsg(text, type) {
+            msg.innerHTML = `<div class="alert alert-${type === 'error' ? 'danger' : 'success'} py-2">${text}</div>`;
+            if (type === 'success') setTimeout(() => { msg.innerHTML = ''; }, 3000);
+        }
+
+        function formatEvent(ev) {
+            const urgent = ev.priority === 'urgent';
+            const dt = new Date(ev.event_date_time).toLocaleString();
+            return `
+                <div class="p-3 border-bottom">
+                    <div class="d-flex justify-content-between align-items-start mb-1">
+                        <strong>${ev.title}</strong>
+                        <span class="badge ${urgent ? 'bg-danger' : 'bg-secondary'} ms-2">${ev.priority}</span>
+                    </div>
+                    <div class="text-secondary small">
+                        ${ev.artist} · ${ev.genre} · ${ev.venue}<br>
+                        ${ev.city}, ${ev.state} · ${dt}
+                    </div>
+                </div>`;
+        }
+
+        async function loadEvents() {
+            try {
+                const data = await apiFetch('/events');
+                list.innerHTML = data.events.length === 0
+                    ? '<p class="text-secondary text-center p-4 mb-0">No events yet</p>'
+                    : data.events.map(formatEvent).join('');
+            } catch (err) {
+                list.innerHTML = `<p class="text-danger text-center p-4 mb-0">${err.message}</p>`;
+            }
+        }
+
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            btn.disabled = true;
+            btn.textContent = 'Publishing…';
+
+            try {
+                const data = await apiFetch('/events', {
+                    method: 'POST',
+                    body: JSON.stringify({
+                        title:           document.getElementById('title').value.trim(),
+                        artist:          document.getElementById('artist').value.trim(),
+                        genre:           document.getElementById('genre').value.trim(),
+                        venue:           document.getElementById('venue').value.trim(),
+                        city:            document.getElementById('city').value.trim(),
+                        state:           document.getElementById('state').value.trim(),
+                        event_date_time: document.getElementById('event_date_time').value,
+                        priority:        document.getElementById('priority').value,
+                    }),
+                });
+
+                showMsg(`Event published — ${data.notified_users} subscriber(s) notified`, 'success');
+                form.reset();
+                loadEvents();
+            } catch (err) {
+                showMsg(err.message, 'error');
+            } finally {
+                btn.disabled = false;
+                btn.textContent = 'Publish Event';
+            }
+        });
+
+        loadEvents();
+    </script>
+</body>
+</html>
