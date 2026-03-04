@@ -31,7 +31,8 @@ class GossipService {
 
     startGossip() {
         console.log(`[${this.brokerId}] Starting gossip service`);
-        setInterval(() => this.runGossipRound(), this.gossipInterval);
+        this._gossipTimer = setInterval(() => this.runGossipRound(), this.gossipInterval);
+        console.log(`[${this.brokerId}] Gossip service started`);
     }
 
     publishEvent(event) {
@@ -68,6 +69,11 @@ class GossipService {
             await this.sendGossipToBroker(broker);
         }
 
+        // After sending, age every message in the queue by incrementing its hop count.
+        // This ensures that even locally-published messages (which start at hops=0)
+        // will eventually be pruned, stopping the "0 new, N duplicates" chatter.
+        this.messageQueue.forEach(msg => { msg.hops += 1; });
+
         // Prune messages that have exceeded maxHops (they've spread far enough)
         this.messageQueue = this.messageQueue.filter(msg => msg.hops < this.maxHops);
 
@@ -87,8 +93,9 @@ class GossipService {
 
     async sendGossipToBroker(broker) {
         try {
-            // Send all messages in our queue (the receiver will deduplicate)
-            const messagesToSend = this.messageQueue.filter(msg => msg.hops < this.maxHops);
+            // Send all messages currently in the queue (the receiver will deduplicate).
+            // No need to filter by hops here — runGossipRound prunes after this call.
+            const messagesToSend = this.messageQueue;
 
             if (messagesToSend.length === 0) return;
 

@@ -11,6 +11,12 @@ module.exports = (brokerId, port, registry) => {
     router.post('/', async (req, res) => {
         try {
             const agent = req.body;
+
+            // Guard: if we've already been visited, return immediately to prevent loops
+            if (agent.visited_brokers.includes(brokerId)) {
+                return res.json({ message: 'Agent completed', results: agent.results });
+            }
+
             agent.visited_brokers.push(brokerId);
 
             const data = await runAgentTask(agent.task);
@@ -64,28 +70,41 @@ module.exports = (brokerId, port, registry) => {
             const results = [{ brokerId: brokerId, data: localData }];
             const visited = [brokerId];
 
-            // Step 2: Try to forward to each peer broker
+            // Step 2: Forward a SINGLE agent that chains through all peers sequentially.
+            // We send it to the first reachable peer; that peer will forward it onward
+            // to the next unvisited peer, and so on (mobile agent pattern).
             const peerBrokers = registry.getPeers();
-            for (const peer of peerBrokers) {
-                try {
-                    const agent = new MobileAgent(task, brokerId);
-                    const agentData = agent.toJSON();
-                    agentData.visited_brokers = [...visited];
-                    agentData.results = [];
 
-                    const response = await axios.post(
-                        `http://${peer.host}:${peer.port}/agents`,
-                        agentData,
-                        { timeout: 3000 }
-                    );
+            if (peerBrokers.length > 0) {
+                const agent = new MobileAgent(task, brokerId);
+                const agentData = agent.toJSON();
+                agentData.visited_brokers = [...visited];
+                agentData.results = [];
 
-                    if (response.data?.results) {
-                        results.push(...response.data.results);
+                let agentSent = false;
+                for (const peer of peerBrokers) {
+                    if (visited.includes(peer.id)) continue;
+                    try {
+                        const response = await axios.post(
+                            `http://${peer.host}:${peer.port}/agents`,
+                            agentData,
+                            { timeout: 10000 }
+                        );
+
+                        if (response.data?.results) {
+                            results.push(...response.data.results);
+                        }
+                        agentSent = true;
+                        break; // The agent chains through peers on its own
+                    } catch (err) {
+                        console.log(`[${brokerId}] Agent: peer ${peer.id} unreachable, trying next`);
+                        visited.push(peer.id);
+                        agentData.visited_brokers.push(peer.id);
                     }
-                    visited.push(peer.id);
-                } catch (err) {
-                    console.log(`[${brokerId}] Agent: peer ${peer.id} unreachable, skipping`);
-                    visited.push(peer.id);
+                }
+
+                if (!agentSent) {
+                    console.log(`[${brokerId}] Agent: no peers reachable, returning local results only`);
                 }
             }
 
