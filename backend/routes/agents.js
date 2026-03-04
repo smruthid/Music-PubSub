@@ -64,7 +64,8 @@ module.exports = (brokerId, port, registry) => {
                             return res.status(500).json({ error: `Failed to forward to ${tryAgain.id}` });
                         }
                     } else {
-                        return res.status(500).json({ error: 'No available brokers to forward the agent' });
+                        // Can't reach any more brokers — return what we have so far
+                        return res.json({ message: 'Agent completed (partial - some brokers unreachable)', results: agent.results });
                     }
                 }
             } else {
@@ -83,7 +84,9 @@ module.exports = (brokerId, port, registry) => {
                 return res.status(400).json({ message: 'Task query parameter is required' });
             }
             const agent = new MobileAgent(task, brokerId);
-            const response = await axios.post(`http://localhost:${port}/agents`, agent.toJSON(), { timeout: 15000 });
+
+            // Use 127.0.0.1 instead of localhost to avoid IPv6 resolution issues in Docker
+            const response = await axios.post(`http://127.0.0.1:${port}/agents`, agent.toJSON(), { timeout: 15000 });
             res.json(response.data);
         } catch (err) {
             console.error(`[${brokerId}] Trending agents error:`, err);
