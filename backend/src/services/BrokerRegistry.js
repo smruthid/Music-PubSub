@@ -2,8 +2,9 @@ const axios = require('axios');
 const os = require('os');
 
 class BrokerRegistry {
-    constructor(brokerId, port, lamportClock) {
+    constructor(brokerId, brokerHost, port, lamportClock) {
         this.brokerId = brokerId;
+        this.brokerHost = brokerHost; // Routable IP address
         this.port = port;
         this.lamportClock = lamportClock;
         this.peers = new Map(); // brokerId -> { id, host, port, lastSeen }
@@ -26,15 +27,19 @@ class BrokerRegistry {
             console.log(`[${this.brokerId}] Joining cluster via seed ${seedHost}:${seedPort}...`);
 
             // Step 1: Register ourselves with the seed
+            const headers = {};
+            if (process.env.BROKER_SECRET) {
+                headers['X-Broker-Secret'] = process.env.BROKER_SECRET;
+            }
             const response = await axios.post(
                 `http://${seedHost}:${seedPort}/api/cluster/register`,
                 {
                     broker_id: this.brokerId,
-                    host: this.brokerId, // In Docker, the container name is the hostname
+                    host: this.brokerHost,
                     port: this.port,
                     lamport_clock: this.lamportClock.increment(),
                 },
-                { timeout: 10000 }
+                { timeout: 10000, headers }
             );
 
             // Step 2: The seed responds with all known peers
@@ -67,15 +72,19 @@ class BrokerRegistry {
 
     async announceToPeer(peer) {
         try {
+            const headers = {};
+            if (process.env.BROKER_SECRET) {
+                headers['X-Broker-Secret'] = process.env.BROKER_SECRET;
+            }
             await axios.post(
                 `http://${peer.host}:${peer.port}/api/cluster/register`,
                 {
                     broker_id: this.brokerId,
-                    host: this.brokerId,
+                    host: this.brokerHost,
                     port: this.port,
                     lamport_clock: this.lamportClock.increment(),
                 },
-                { timeout: 5000 }
+                { timeout: 5000, headers }
             );
             console.log(`[${this.brokerId}] ✓ Announced to ${peer.id}`);
         } catch (error) {

@@ -18,6 +18,7 @@ const HeartbeatController = require('./src/controllers/HeartbeatController');
 const ReplicationController = require('./src/controllers/ReplicationController');
 const { setupWebSocket, sendNotification } = require('./websocket');
 
+const authenticateBroker = require('./middleware/brokerAuth');
 const authRoutes = require('./routes/auth');
 const subscriptionRouteFactory = require('./routes/subscriptions');
 const eventRouteFactory = require('./routes/events');
@@ -50,12 +51,28 @@ const IS_SEED = process.env.IS_SEED === 'true';
 // Legacy support: if PEER_BROKERS is provided, parse it as the initial peer list
 const INITIAL_PEERS = process.env.PEER_BROKERS ? parsePeerBrokers(process.env.PEER_BROKERS) : [];
 
+// Resolve a routable host address for this broker.
+// In Docker, os.hostname() returns the short container ID which is NOT
+// DNS-resolvable by other containers.  We use the container's IPv4 address instead.
+const BROKER_HOST = (function getContainerIP() {
+  const interfaces = os.networkInterfaces();
+  for (const name of Object.keys(interfaces)) {
+    for (const iface of interfaces[name]) {
+      if (iface.family === 'IPv4' && !iface.internal) {
+        return iface.address;
+      }
+    }
+  }
+  return '127.0.0.1';
+})();
+
 console.log(`
 ╔════════════════════════════════════════════════╗
 ║     Music PubSub Broker - Distributed Core     ║
 ║                                                ║
 ║ Broker ID: ${BROKER_ID.padEnd(37)}║
 ║ Port: ${PORT.toString().padEnd(43)}║
+║ Host: ${BROKER_HOST.padEnd(42)}║
 ║ Seed Broker: ${(SEED_BROKER || 'none (I am seed)').padEnd(35)}║
 ║ Initial Peers: ${INITIAL_PEERS.length.toString().padEnd(33)}║
 ╚════════════════════════════════════════════════╝
@@ -67,11 +84,11 @@ try {
   console.log(`[${BROKER_ID}] Lamport Clock initialized`);
 
   // Initialize Broker Registry (manages dynamic cluster membership)
-  const registry = new BrokerRegistry(BROKER_ID, PORT, lamportClock);
+  const registry = new BrokerRegistry(BROKER_ID, BROKER_HOST, PORT, lamportClock);
   console.log(`[${BROKER_ID}] BrokerRegistry initialized`);
 
   // Initialize Services — start with INITIAL_PEERS (may be empty for dynamic mode)
-  const heartbeatService = new HeartbeatService(BROKER_ID, PORT, [...INITIAL_PEERS], lamportClock);
+  const heartbeatService = new HeartbeatService(BROKER_ID, BROKER_HOST, PORT, [...INITIAL_PEERS], lamportClock);
   console.log(`[${BROKER_ID}] HeartbeatService initialized`);
 
   const gossipService = new GossipService(BROKER_ID, PORT, [...INITIAL_PEERS], lamportClock, {
@@ -177,33 +194,35 @@ try {
   app.use('/agents', agentRouteFactory(BROKER_ID, PORT, registry));
 
   // ==================== Broker API Routes ====================
+  // Health check is public (used by Docker HEALTHCHECK)
   app.get('/health', (_req, res) => {
     res.json({ status: 'ok', broker_id: BROKER_ID, timestamp: Date.now() });
   });
 
-  app.post('/api/heartbeat', (req, res) => {
+  // All /api/* routes require broker-to-broker authentication
+  app.post('/api/heartbeat', authenticateBroker, (req, res) => {
     heartbeatController.receiveHeartbeat(req, res);
   });
 
-  app.get('/api/health-status', (req, res) => {
+  app.get('/api/health-status', authenticateBroker, (req, res) => {
     heartbeatController.getHealthStatus(req, res);
   });
 
-  app.post('/api/gossip', (req, res) => {
+  app.post('/api/gossip', authenticateBroker, (req, res) => {
     replicationController.receiveGossip(req, res);
   });
 
-  app.post('/api/sync-request', (req, res) => {
+  app.post('/api/sync-request', authenticateBroker, (req, res) => {
     replicationController.handleSyncRequest(req, res);
   });
 
-  app.get('/api/replication-status', (req, res) => {
+  app.get('/api/replication-status', authenticateBroker, (req, res) => {
     replicationController.getReplicationStatus(req, res);
   });
 
   // ==================== Dynamic Cluster Discovery API ====================
 
-  app.post('/api/cluster/register', (req, res) => {
+  app.post('/api/cluster/register', authenticateBroker, (req, res) => {
     const { broker_id, host, port: peerPort, lamport_clock: remoteClock } = req.body;
     if (!broker_id || !host || !peerPort) {
       return res.status(400).json({ error: 'broker_id, host, and port are required' });
@@ -215,7 +234,7 @@ try {
     registry.addPeer({ id: broker_id, host, port: peerPort });
 
     const allPeers = registry.getPeers().map(p => ({ id: p.id, host: p.host, port: p.port }));
-    allPeers.push({ id: BROKER_ID, host: BROKER_ID, port: PORT });
+    allPeers.push({ id: BROKER_ID, host: BROKER_HOST, port: PORT });
 
     res.json({
       status: 'ok',
@@ -226,7 +245,7 @@ try {
     });
   });
 
-  app.get('/api/cluster/members', (_req, res) => {
+  app.get('/api/cluster/members', authenticateBroker, (_req, res) => {
     res.json({
       self: { id: BROKER_ID, port: PORT },
       peers: registry.getPeers(),

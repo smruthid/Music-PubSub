@@ -1,8 +1,9 @@
 const axios = require('axios');
 
 class HeartbeatService {
-    constructor(brokerId, port, peerBrokers, lamportClock) {
+    constructor(brokerId, brokerHost, port, peerBrokers, lamportClock) {
         this.brokerId = brokerId;
+        this.brokerHost = brokerHost; // Routable IP address
         this.port = port;
         this.peerBrokers = peerBrokers; // [{ id, host, port }]
         this.lamportClock = lamportClock;
@@ -47,7 +48,7 @@ class HeartbeatService {
         const message = {
             type: 'heartbeat',
             broker_id: this.brokerId,
-            host: this.brokerId,
+            host: this.brokerHost,
             port: this.port,
             timestamp: Date.now(),
             lamport_clock: this.lamportClock.increment(),
@@ -63,7 +64,11 @@ class HeartbeatService {
     async sendHeartbeatToBroker(broker, message) {
         try {
             const url = `http://${broker.host}:${broker.port}/api/heartbeat`;
-            const response = await axios.post(url, message, { timeout: 3000 });
+            const headers = {};
+            if (process.env.BROKER_SECRET) {
+                headers['X-Broker-Secret'] = process.env.BROKER_SECRET;
+            }
+            const response = await axios.post(url, message, { timeout: 3000, headers });
 
             if (response.data?.lamport_clock) {
                 this.lamportClock.receive(response.data.lamport_clock);

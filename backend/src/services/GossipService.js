@@ -79,7 +79,11 @@ class GossipService {
             };
 
             const url = `http://${broker.host}:${broker.port}/api/gossip`;
-            const response = await axios.post(url, payload, { timeout: 3000 });
+            const headers = {};
+            if (process.env.BROKER_SECRET) {
+                headers['X-Broker-Secret'] = process.env.BROKER_SECRET;
+            }
+            const response = await axios.post(url, payload, { timeout: 3000, headers });
 
             if (response.data?.status === 'success') {
                 this.brokerSeqTracking.set(broker.id, this.seqNumber);

@@ -31,6 +31,7 @@ services:
       DB_PASSWORD: pubsub_password
       DB_NAME: music_pubsub
       JWT_SECRET: dev_jwt_secret_change_in_production
+      BROKER_SECRET: super_secret_broker_key_2026
       IS_SEED: "true"
     ports:
       - "5001:5000"
@@ -52,6 +53,7 @@ services:
       DB_PASSWORD: pubsub_password
       DB_NAME: music_pubsub
       JWT_SECRET: dev_jwt_secret_change_in_production
+      BROKER_SECRET: super_secret_broker_key_2026
       SEED_BROKER: seed-broker:5000
     depends_on:
       postgres:
