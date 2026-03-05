@@ -1,4 +1,4 @@
-const axios = require('axios');
+const axios = require('../utils/brokerClient');
 const Message = require('../models/Message');
 
 class GossipService {
@@ -107,7 +107,7 @@ class GossipService {
                 events: messagesToSend.map(msg => msg.toJSON()),
             };
 
-            const url = `http://${broker.host}:${broker.port}/api/gossip`;
+            const url = `https://${broker.host}:${broker.port}/api/gossip`;
             const headers = {};
             if (process.env.BROKER_SECRET) {
                 headers['X-Broker-Secret'] = process.env.BROKER_SECRET;

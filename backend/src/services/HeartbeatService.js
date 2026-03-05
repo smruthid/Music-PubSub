@@ -1,4 +1,4 @@
-const axios = require('axios');
+const axios = require('../utils/brokerClient');
 
 class HeartbeatService {
     constructor(brokerId, brokerHost, port, peerBrokers, lamportClock) {
@@ -63,7 +63,7 @@ class HeartbeatService {
 
     async sendHeartbeatToBroker(broker, message) {
         try {
-            const url = `http://${broker.host}:${broker.port}/api/heartbeat`;
+            const url = `https://${broker.host}:${broker.port}/api/heartbeat`;
             const headers = {};
             if (process.env.BROKER_SECRET) {
                 headers['X-Broker-Secret'] = process.env.BROKER_SECRET;

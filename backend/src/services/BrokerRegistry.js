@@ -1,4 +1,4 @@
-const axios = require('axios');
+const axios = require('../utils/brokerClient');
 const os = require('os');
 
 class BrokerRegistry {
@@ -32,7 +32,7 @@ class BrokerRegistry {
                 headers['X-Broker-Secret'] = process.env.BROKER_SECRET;
             }
             const response = await axios.post(
-                `http://${seedHost}:${seedPort}/api/cluster/register`,
+                `https://${seedHost}:${seedPort}/api/cluster/register`,
                 {
                     broker_id: this.brokerId,
                     host: this.brokerHost,
@@ -77,7 +77,7 @@ class BrokerRegistry {
                 headers['X-Broker-Secret'] = process.env.BROKER_SECRET;
             }
             await axios.post(
-                `http://${peer.host}:${peer.port}/api/cluster/register`,
+                `https://${peer.host}:${peer.port}/api/cluster/register`,
                 {
                     broker_id: this.brokerId,
                     host: this.brokerHost,

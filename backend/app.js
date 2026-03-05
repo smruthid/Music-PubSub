@@ -8,7 +8,8 @@ require('dotenv').config();
 
 const os = require('os');
 const express = require('express');
-const http = require('http');
+const fs = require('fs');
+const https = require('https');
 const pool = require('./db');
 const LamportClock = require('./src/utils/lamportClock');
 const BrokerRegistry = require('./src/services/BrokerRegistry');
@@ -254,11 +255,15 @@ try {
   });
 
   // ==================== Startup ====================
-  const server = http.createServer(app);
+  const tlsOptions = {
+    key: fs.readFileSync('/app/certs/broker-key.pem'),
+    cert: fs.readFileSync('/app/certs/broker-cert.pem'),
+  };
+  const server = https.createServer(tlsOptions, app);
   setupWebSocket(server);
 
   server.listen(PORT, '0.0.0.0', () => {
-    console.log(`\n[${BROKER_ID}] Server running on http://0.0.0.0:${PORT}`);
+    console.log(`\n[${BROKER_ID}] Server running on https://0.0.0.0:${PORT}`);
 
     try {
       heartbeatService.startHeartbeats();
