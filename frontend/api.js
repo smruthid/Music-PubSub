@@ -1,5 +1,5 @@
 // Change this to whichever broker you want to talk to (5001 = broker-1, 5002 = broker-2, 5003 = broker-3)
-const BROKER_URL = 'http://localhost:5001';
+const BROKER_URL = 'https://localhost:5001';
 
 // ── Auth helpers ─────────────────────────────────────────────────────────────
 

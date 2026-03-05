@@ -87,6 +87,24 @@ module.exports = (lamportClock) => {
         }
     });
 
+    // get past notifications for the current user
+    router.get('/notifications', authenticateToken, async (req, res) => {
+        try {
+            const result = await pool.query(
+                `SELECT e.*, n.sent_at
+                 FROM notifications n
+                 JOIN events e ON n.event_id = e.id
+                 WHERE n.user_id = $1
+                 ORDER BY n.sent_at DESC`,
+                [req.userId]
+            );
+            res.json({ notifications: result.rows });
+        } catch (err) {
+            console.error('Error fetching notifications:', err);
+            res.status(500).json({ message: 'Internal server error' });
+        }
+    });
+
     //delete a subscription by id
     router.delete('/:id', authenticateToken, async (req, res) => {
         try {
