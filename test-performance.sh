@@ -20,19 +20,22 @@ NUM_EVENTS=20               # number of events to publish for load test
 
 # Helper: fetch a URL from inside the seed-broker container using Node.js
 # Usage: docker_fetch <host:port> <path> [method]
+#
+# IMPORTANT: Do NOT use "PATH" as a local variable name — it clobbers
+# the shell's executable search path and breaks 'docker compose exec'.
 docker_fetch() {
   local ADDR="$1"
-  local PATH="$2"
+  local URL_PATH="$2"
   local METHOD="${3:-GET}"
-  local HOST="${ADDR%%:*}"
-  local PORT="${ADDR##*:}"
+  local PEER_HOST="${ADDR%%:*}"
+  local PEER_PORT="${ADDR##*:}"
 
   docker compose exec -T seed-broker node -e "
     const https = require('https');
     const options = {
-      hostname: '$HOST',
-      port: $PORT,
-      path: '$PATH',
+      hostname: '$PEER_HOST',
+      port: $PEER_PORT,
+      path: '$URL_PATH',
       method: '$METHOD',
       rejectUnauthorized: false,
       headers: { 'X-Broker-Secret': '$BSECRET' }
@@ -105,7 +108,7 @@ TOKEN=$($CURL -X POST "$SEED/auth/login" \
 echo "   Token: ${TOKEN:0:20}..."
 echo ""
 
-# ─── Subscribe ───────���───────────────────────────────────────────
+# ─── Subscribe ────────────────────────────────────────────────────
 echo "🎵 Creating subscription (Rock, San Francisco, CA)..."
 $CURL -X POST "$SEED/subscriptions" \
   -H "Content-Type: application/json" \
@@ -308,7 +311,7 @@ echo ""
 # ─── Cross-cluster summary ───────────────────────────────────────
 echo "╔══════════════════════════════════════════════════════════╗"
 echo "║           CROSS-CLUSTER SUMMARY                          ║"
-echo "╚══════════════════════════════════════════════════════════╝"
+echo "╚═════════════════���════════════════════════════════════════╝"
 echo ""
 
 # Gather seed metrics
