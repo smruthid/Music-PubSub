@@ -1,8 +1,9 @@
 class ReplicationController {
-    constructor(gossipService, heartbeatService, lamportClock) {
+    constructor(gossipService, heartbeatService, lamportClock, metricsCollector) {
         this.gossipService = gossipService;
         this.heartbeatService = heartbeatService;
         this.lamportClock = lamportClock;
+        this.metricsCollector = metricsCollector || null;
     }
 
     async receiveGossip(req, res) {
@@ -57,6 +58,33 @@ class ReplicationController {
             });
         } catch (error) {
             console.error('[ReplicationController] Status error:', error);
+            res.status(500).json({ error: error.message });
+        }
+    }
+
+    // ─── Performance Metrics Endpoint ────────────────────────────
+    getMetrics(_req, res) {
+        try {
+            if (!this.metricsCollector) {
+                return res.status(501).json({ error: 'Metrics collector not initialized' });
+            }
+            res.json(this.metricsCollector.getMetrics());
+        } catch (error) {
+            console.error('[ReplicationController] Metrics error:', error);
+            res.status(500).json({ error: error.message });
+        }
+    }
+
+    // ─── Reset Metrics (for clean test runs) ─────────────────────
+    resetMetrics(_req, res) {
+        try {
+            if (!this.metricsCollector) {
+                return res.status(501).json({ error: 'Metrics collector not initialized' });
+            }
+            this.metricsCollector.reset();
+            res.json({ status: 'ok', message: 'Metrics reset successfully' });
+        } catch (error) {
+            console.error('[ReplicationController] Metrics reset error:', error);
             res.status(500).json({ error: error.message });
         }
     }

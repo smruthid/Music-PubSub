@@ -15,6 +15,7 @@ const LamportClock = require('./src/utils/lamportClock');
 const BrokerRegistry = require('./src/services/BrokerRegistry');
 const HeartbeatService = require('./src/services/HeartbeatService');
 const GossipService = require('./src/services/GossipService');
+const MetricsCollector = require('./src/services/MetricsCollector');
 const HeartbeatController = require('./src/controllers/HeartbeatController');
 const ReplicationController = require('./src/controllers/ReplicationController');
 const { setupWebSocket, sendNotification } = require('./websocket');
@@ -92,6 +93,10 @@ try {
   const heartbeatService = new HeartbeatService(BROKER_ID, BROKER_HOST, PORT, [...INITIAL_PEERS], lamportClock);
   console.log(`[${BROKER_ID}] HeartbeatService initialized`);
 
+  // Initialize MetricsCollector for performance evaluation
+  const metricsCollector = new MetricsCollector(BROKER_ID);
+  console.log(`[${BROKER_ID}] MetricsCollector initialized`);
+
   const gossipService = new GossipService(BROKER_ID, PORT, [...INITIAL_PEERS], lamportClock, {
     saveEvent: async (eventData) => {
       const { title, artist, genre, city, state, venue, event_date_time, priority } = eventData.payload;
@@ -147,7 +152,7 @@ try {
 
       console.log(`[${BROKER_ID}] Processed replicated event: "${title}", notified ${matchingResult.rows.length} local subscribers`);
     },
-  });
+  }, metricsCollector);
   console.log(`[${BROKER_ID}] GossipService initialized`);
 
   // ==================== Wire Registry ↔ Services ====================
@@ -183,9 +188,9 @@ try {
     registry.addPeer(peer);
   }
 
-  // Initialize Controllers — pass registry to HeartbeatController
+  // Initialize Controllers — pass metricsCollector to ReplicationController
   const heartbeatController = new HeartbeatController(heartbeatService, lamportClock, registry);
-  const replicationController = new ReplicationController(gossipService, heartbeatService, lamportClock);
+  const replicationController = new ReplicationController(gossipService, heartbeatService, lamportClock, metricsCollector);
   console.log(`[${BROKER_ID}] Controllers initialized`);
 
   // ==================== User API Routes ====================
@@ -219,6 +224,15 @@ try {
 
   app.get('/api/replication-status', authenticateBroker, (req, res) => {
     replicationController.getReplicationStatus(req, res);
+  });
+
+  // ==================== Performance Metrics API ====================
+  app.get('/api/metrics', authenticateBroker, (req, res) => {
+    replicationController.getMetrics(req, res);
+  });
+
+  app.post('/api/metrics/reset', authenticateBroker, (req, res) => {
+    replicationController.resetMetrics(req, res);
   });
 
   // ==================== Dynamic Cluster Discovery API ====================

@@ -2,12 +2,13 @@ const axios = require('../utils/brokerClient');
 const Message = require('../models/Message');
 
 class GossipService {
-    constructor(brokerId, port, peerBrokers, lamportClock, database) {
+    constructor(brokerId, port, peerBrokers, lamportClock, database, metricsCollector) {
         this.brokerId = brokerId;
         this.port = port;
         this.peerBrokers = peerBrokers;
         this.lamportClock = lamportClock;
         this.database = database;
+        this.metricsCollector = metricsCollector || null;
 
         this.messageQueue = [];
         this.seqNumber = 0;
@@ -57,6 +58,11 @@ class GossipService {
         this.seenMessages.add(message.message_id);
         this.messageQueue.push(message);
 
+        // ── Metrics: record publish ──
+        if (this.metricsCollector) {
+            this.metricsCollector.recordPublish();
+        }
+
         console.log(`[${this.brokerId}] Published event seq=${this.seqNumber}, msgId=${message.message_id.slice(0,8)}: ${event.title}`);
         return message;
     }
@@ -67,6 +73,11 @@ class GossipService {
         const targets = this.selectRandomPeers(this.fanout);
         for (const broker of targets) {
             await this.sendGossipToBroker(broker);
+        }
+
+        // ── Metrics: record gossip round ──
+        if (this.metricsCollector) {
+            this.metricsCollector.recordGossipRound(this.messageQueue.length * targets.length);
         }
 
         // After sending, age every message in the queue by incrementing its hop count.
@@ -142,6 +153,12 @@ class GossipService {
                 // DEDUPLICATION: skip messages we've already seen
                 if (messageId && this.seenMessages.has(messageId)) {
                     duplicateCount++;
+
+                    // ── Metrics: record duplicate ──
+                    if (this.metricsCollector) {
+                        this.metricsCollector.recordDuplicate();
+                    }
+
                     continue;
                 }
 
@@ -153,6 +170,11 @@ class GossipService {
                 // Save to database (idempotent — the DB check in app.js handles duplicates)
                 await this.database.saveEvent(eventData);
                 newCount++;
+
+                // ── Metrics: record delivery with latency data ──
+                if (this.metricsCollector) {
+                    this.metricsCollector.recordDelivery(eventData);
+                }
 
                 // RE-GOSSIP: Add to our own messageQueue so we forward it to other peers.
                 // This is the key fix — without this, messages die after one hop.

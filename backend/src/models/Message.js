@@ -8,6 +8,7 @@ class Message {
         this.broker_id = brokerId; // the broker currently forwarding the event
         this.lamport_clock = lamportClock;
         this.timestamp = Date.now();
+        this.publish_timestamp = Date.now(); // wall-clock time at original publish (for latency measurement)
         this.payload = payload;
         this.seq_number = null; // assigned when added to the queue
         this.replicated = false;
@@ -22,6 +23,7 @@ class Message {
             broker_id: this.broker_id,
             lamport_clock: this.lamport_clock,
             timestamp: this.timestamp,
+            publish_timestamp: this.publish_timestamp,
             seq_number: this.seq_number,
             payload: this.payload,
             replicated: this.replicated,
@@ -36,6 +38,7 @@ class Message {
         msg.seq_number = json.seq_number;
         msg.replicated = json.replicated;
         msg.timestamp = json.timestamp;
+        msg.publish_timestamp = json.publish_timestamp || json.timestamp;
         msg.hops = json.hops || 0;
         return msg;
     }
