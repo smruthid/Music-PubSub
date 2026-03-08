@@ -3,6 +3,8 @@
 # test-performance.sh — Performance evaluation test harness
 #
 # Measures latency, reliability, and throughput under load.
+# Uses 'docker compose exec' to reach non-seed brokers inside the
+# Docker network, since only the seed-broker port is exposed to the host.
 #
 # Usage:
 #   1. In terminal 1:  docker compose down -v && docker compose up --build --scale broker=2
@@ -15,6 +17,12 @@ SEED="https://localhost:5001"
 BSECRET="super_secret_broker_key_2026"
 CURL="curl -sk"             # silent + allow self-signed certs
 NUM_EVENTS=20               # number of events to publish for load test
+
+# Helper: run a curl command inside the seed-broker container
+# (which CAN reach peer IPs on the Docker network)
+docker_curl() {
+  docker compose exec -T seed-broker sh -c "apk add --no-cache curl > /dev/null 2>&1; curl -sk $*"
+}
 
 echo ""
 echo "╔══════════════════════════════════════════════════════════╗"
@@ -41,7 +49,7 @@ echo "📡 Cluster members:"
 $CURL -H "X-Broker-Secret: $BSECRET" "$SEED/api/cluster/members" | python3 -m json.tool
 echo ""
 
-# ─── Discover non-seed broker addresses ──────────────────────────
+# ─── Discover non-seed broker addresses (Docker-internal) ────────
 echo "🔍 Discovering non-seed broker addresses..."
 PEER_HOSTS=$($CURL -H "X-Broker-Secret: $BSECRET" "$SEED/api/cluster/members" | python3 -c "
 import sys, json
@@ -55,7 +63,7 @@ while IFS= read -r line; do
   [ -n "$line" ] && PEER_ARRAY+=("$line")
 done <<< "$PEER_HOSTS"
 
-echo "   Found ${#PEER_ARRAY[@]} peer broker(s)"
+echo "   Found ${#PEER_ARRAY[@]} peer broker(s) (Docker-internal addresses)"
 for p in "${PEER_ARRAY[@]}"; do
   echo "     - $p"
 done
@@ -86,8 +94,11 @@ echo ""
 # ─── Reset metrics on ALL brokers ────────────────────────────────
 echo "🔄 Resetting metrics on all brokers..."
 $CURL -X POST -H "X-Broker-Secret: $BSECRET" "$SEED/api/metrics/reset" > /dev/null 2>&1
+# Use docker compose exec to reach peers inside the Docker network
 for PEER in "${PEER_ARRAY[@]}"; do
-  $CURL -X POST -H "X-Broker-Secret: $BSECRET" "https://$PEER/api/metrics/reset" > /dev/null 2>&1 || true
+  docker compose exec -T seed-broker sh -c \
+    "curl -sk -X POST -H 'X-Broker-Secret: $BSECRET' 'https://$PEER/api/metrics/reset'" \
+    > /dev/null 2>&1 || true
 done
 echo "   ✅ All metrics reset."
 echo ""
@@ -107,7 +118,7 @@ for i in $(seq 1 $NUM_EVENTS); do
       \"city\":\"San Francisco\",
       \"state\":\"CA\",
       \"venue\":\"Venue $i\",
-      \"event_date_time\":\"2026-07-01T20:00:00Z\",
+      \"event_date_time\":\"2026-07-0${i}T20:00:00Z\",
       \"priority\":\"normal\"
     }" > /dev/null 2>&1 &
 done
@@ -125,17 +136,14 @@ echo "⏳ Waiting 15 seconds for gossip propagation + queue drain..."
 sleep 15
 echo ""
 
-# ─── Helper function to print one broker's metrics ───────────────
-print_metrics() {
-  local LABEL="$1"
-  local URL="$2"
-
+# ─── Helper: print seed broker metrics (reachable from host) ─────
+print_seed_metrics() {
   echo "╔══════════════════════════════════════════════════════════╗"
-  echo "║  $LABEL"
+  echo "║  SEED BROKER METRICS (publisher)                         ║"
   echo "╚══════════════════════════════════════════════════════════╝"
   echo ""
 
-  $CURL -H "X-Broker-Secret: $BSECRET" "$URL/api/metrics" | python3 -c "
+  $CURL -H "X-Broker-Secret: $BSECRET" "$SEED/api/metrics" | python3 -c "
 import sys, json
 
 m = json.load(sys.stdin)
@@ -168,7 +176,7 @@ if lat['count'] > 0:
     print(f'  p95:                 {lat[\"p95\"]}')
     print(f'  p99:                 {lat[\"p99\"]}')
 else:
-    print(f'  (no samples — this broker was the publisher, not a receiver)')
+    print('  (no samples — this broker was the publisher, not a receiver)')
 print()
 print(f'  ── Throughput ({thr[\"window_seconds\"]}s window) ─────────────────────')
 print(f'  Publishes in window: {thr[\"publishes_in_window\"]}')
@@ -182,19 +190,93 @@ if pbd:
     for origin, count in pbd.items():
         print(f'    {origin}: {count}')
 else:
-    print(f'    (none — this broker published locally, no gossip deliveries)')
-" 2>/dev/null || echo "  ⚠️  Could not reach this broker"
+    print('    (none — this broker published locally, no gossip deliveries)')
+"
+
+  echo ""
+}
+
+# ─── Helper: print peer broker metrics (via docker compose exec) ─
+print_peer_metrics() {
+  local PEER_NUM="$1"
+  local PEER_ADDR="$2"
+
+  echo "╔══════════════════════════════════════════════════════════╗"
+  echo "║  PEER BROKER #$PEER_NUM METRICS (gossip receiver)               ║"
+  echo "╚══════════════════════════════════════════════════════════╝"
+  echo ""
+
+  # Fetch metrics from inside the Docker network via seed-broker container
+  local RAW
+  RAW=$(docker compose exec -T seed-broker sh -c \
+    "curl -sk -H 'X-Broker-Secret: $BSECRET' 'https://$PEER_ADDR/api/metrics'" 2>/dev/null) || true
+
+  if [ -z "$RAW" ]; then
+    echo "  ⚠️  Could not reach peer broker at $PEER_ADDR"
+    echo ""
+    return
+  fi
+
+  echo "$RAW" | python3 -c "
+import sys, json
+
+m = json.load(sys.stdin)
+rel = m['reliability']
+lat = m['latency']
+thr = m['throughput']
+
+print(f'  Broker:              {m[\"broker_id\"]}')
+print(f'  Uptime:              {m[\"uptime_human\"]}')
+print()
+print('  ── Reliability ──────────────────────────────────')
+print(f'  Events published:    {rel[\"events_published\"]}')
+print(f'  Events delivered:    {rel[\"events_delivered\"]}')
+ratio = rel['delivery_ratio']
+if ratio is not None:
+    print(f'  Delivery ratio:      {ratio * 100:.1f}%')
+else:
+    print(f'  Delivery ratio:      N/A (this broker only received via gossip)')
+print(f'  Duplicates received: {rel[\"duplicates_received\"]}')
+print(f'  Gossip rounds sent:  {rel[\"gossip_rounds_sent\"]}')
+print(f'  Gossip msgs sent:    {rel[\"gossip_messages_sent\"]}')
+print()
+print('  ── Latency (ms) ────────────────────────────────')
+print(f'  Samples:             {lat[\"count\"]}')
+if lat['count'] > 0:
+    print(f'  Min:                 {lat[\"min\"]}')
+    print(f'  Max:                 {lat[\"max\"]}')
+    print(f'  Avg:                 {lat[\"avg\"]}')
+    print(f'  p50:                 {lat[\"p50\"]}')
+    print(f'  p95:                 {lat[\"p95\"]}')
+    print(f'  p99:                 {lat[\"p99\"]}')
+else:
+    print('  (no samples)')
+print()
+print(f'  ── Throughput ({thr[\"window_seconds\"]}s window) ─────────────────────')
+print(f'  Publishes in window: {thr[\"publishes_in_window\"]}')
+print(f'  Deliveries in window:{thr[\"deliveries_in_window\"]}')
+print(f'  Publish rate:        {thr[\"publish_rate_per_sec\"]}/sec')
+print(f'  Delivery rate:       {thr[\"delivery_rate_per_sec\"]}/sec')
+print()
+print('  ── Per-Broker Deliveries ────────────────────────')
+pbd = m.get('per_broker_deliveries', {})
+if pbd:
+    for origin, count in pbd.items():
+        print(f'    {origin}: {count}')
+else:
+    print('    (none)')
+"
 
   echo ""
 }
 
 # ─── Print metrics for SEED broker ───────────────────────────────
-print_metrics "SEED BROKER METRICS (publisher)" "$SEED"
+print_seed_metrics
 
 # ─── Print metrics for each PEER broker ──────────────────────────
 PEER_NUM=1
 for PEER in "${PEER_ARRAY[@]}"; do
-  print_metrics "PEER BROKER #$PEER_NUM METRICS (gossip receiver)" "https://$PEER"
+  print_peer_metrics "$PEER_NUM" "$PEER"
   PEER_NUM=$((PEER_NUM + 1))
 done
 
@@ -232,64 +314,45 @@ echo "║           CROSS-CLUSTER SUMMARY                          ║"
 echo "╚══════════════════════════════════════════════════════════╝"
 echo ""
 
+# Collect all peer metrics via docker compose exec, then aggregate
+SEED_METRICS=$($CURL -H "X-Broker-Secret: $BSECRET" "$SEED/api/metrics" 2>/dev/null)
+
+ALL_PEER_METRICS="["
+FIRST=true
+for PEER in "${PEER_ARRAY[@]}"; do
+  PM=$(docker compose exec -T seed-broker sh -c \
+    "curl -sk -H 'X-Broker-Secret: $BSECRET' 'https://$PEER/api/metrics'" 2>/dev/null) || true
+  if [ -n "$PM" ]; then
+    if [ "$FIRST" = true ]; then
+      FIRST=false
+    else
+      ALL_PEER_METRICS+=","
+    fi
+    ALL_PEER_METRICS+="$PM"
+  fi
+done
+ALL_PEER_METRICS+="]"
+
 python3 -c "
-import subprocess, json
+import json, sys
 
-seed_url = 'https://localhost:5001'
-secret = 'super_secret_broker_key_2026'
+seed = json.loads('''$SEED_METRICS''')
+peer_metrics = json.loads('''$ALL_PEER_METRICS''')
 
-# Collect seed metrics
-try:
-    out = subprocess.check_output(
-        ['curl', '-sk', '-H', f'X-Broker-Secret: {secret}', f'{seed_url}/api/metrics'],
-        timeout=5
-    )
-    seed = json.loads(out)
-except:
-    seed = None
-
-# Collect peer URLs
-try:
-    out = subprocess.check_output(
-        ['curl', '-sk', '-H', f'X-Broker-Secret: {secret}', f'{seed_url}/api/cluster/members'],
-        timeout=5
-    )
-    members = json.loads(out)
-    peers = [f'https://{p[\"host\"]}:{p[\"port\"]}' for p in members.get('peers', [])]
-except:
-    peers = []
-
-# Collect peer metrics
-peer_metrics = []
-for url in peers:
-    try:
-        out = subprocess.check_output(
-            ['curl', '-sk', '-H', f'X-Broker-Secret: {secret}', f'{url}/api/metrics'],
-            timeout=5
-        )
-        peer_metrics.append(json.loads(out))
-    except:
-        pass
-
-# Aggregate
-total_published = (seed['reliability']['events_published'] if seed else 0)
+total_published = seed['reliability']['events_published']
 total_delivered = sum(m['reliability']['events_delivered'] for m in peer_metrics)
-total_duplicates = (seed['reliability']['duplicates_received'] if seed else 0) + sum(m['reliability']['duplicates_received'] for m in peer_metrics)
+total_duplicates = seed['reliability']['duplicates_received'] + sum(m['reliability']['duplicates_received'] for m in peer_metrics)
 
-all_latencies = []
-for m in peer_metrics:
-    if m['latency']['count'] > 0:
-        all_latencies.append(m['latency'])
+all_latencies = [m['latency'] for m in peer_metrics if m['latency']['count'] > 0]
 
 print(f'  Total events published (seed):          {total_published}')
 print(f'  Total events delivered (across peers):   {total_delivered}')
 print(f'  Number of peer brokers:                  {len(peer_metrics)}')
 if len(peer_metrics) > 0:
     expected = total_published * len(peer_metrics)
-    actual = total_delivered
-    ratio = actual / expected * 100 if expected > 0 else 0
+    ratio = total_delivered / expected * 100 if expected > 0 else 0
     print(f'  Expected deliveries ({total_published} × {len(peer_metrics)}):       {expected}')
-    print(f'  Actual deliveries:                       {actual}')
+    print(f'  Actual deliveries:                       {total_delivered}')
     print(f'  Cross-cluster reliability:               {ratio:.1f}%')
 print(f'  Total duplicates (all brokers):          {total_duplicates}')
 print()
@@ -307,9 +370,7 @@ if all_latencies:
     else:
         print(f'    ⚠️  Average latency exceeds 5000ms target')
 else:
-    print('  ⚠️  No latency data from peers (could not reach peer /api/metrics)')
-    print('     This is expected when peer ports are not exposed to the host.')
-    print('     The peer brokers DO have the data — see broker logs for confirmation.')
+    print('  ⚠️  No latency data from peers')
 "
 
 echo ""
