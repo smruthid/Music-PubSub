@@ -33,7 +33,7 @@ module.exports = (brokerId, port, registry) => {
             for (const nextBroker of unvisited) {
                 try {
                     const response = await axios.post(
-                        `http://${nextBroker.host}:${nextBroker.port}/agents`,
+                        `https://${nextBroker.host}:${nextBroker.port}/agents`,
                         agent,
                         { timeout: 3000 }
                     );
@@ -86,7 +86,7 @@ module.exports = (brokerId, port, registry) => {
                     if (visited.includes(peer.id)) continue;
                     try {
                         const response = await axios.post(
-                            `http://${peer.host}:${peer.port}/agents`,
+                            `https://${peer.host}:${peer.port}/agents`,
                             agentData,
                             { timeout: 10000 }
                         );
