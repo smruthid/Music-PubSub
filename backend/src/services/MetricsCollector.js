@@ -1,54 +1,37 @@
-/**
- * MetricsCollector — Performance evaluation for the distributed pub-sub system.
- *
- * Tracks:
- *  - Publish-to-delivery LATENCY (wall-clock ms between origin publish and gossip receipt)
- *  - Message RELIABILITY (delivered-vs-published ratio)
- *  - THROUGHPUT (publishes/sec and deliveries/sec over a sliding window)
- *  - Per-broker delivery breakdown
- *  - Gossip protocol overhead (duplicate counts)
- */
+
 class MetricsCollector {
     constructor(brokerId) {
         this.brokerId = brokerId;
 
-        // ── Latency ──────────────────────────────────────────────
-        this.latencySamples = [];          // raw latency values (ms)
-        this.maxSamples = 10000;           // cap to prevent unbounded growth
+        this.latencySamples = [];          
+        this.maxSamples = 10000;           
 
-        // ── Reliability ──────────────────────────────────────────
-        this.eventsPublished = 0;          // events originally published on THIS broker
-        this.eventsDelivered = 0;          // events received via gossip on THIS broker
-        this.duplicatesReceived = 0;       // gossip duplicates (already-seen messages)
-        this.gossipRoundsSent = 0;         // number of outbound gossip rounds completed
-        this.gossipMessagesSent = 0;       // total individual messages sent in gossip
+        this.eventsPublished = 0;          
+        this.eventsDelivered = 0;         
+        this.duplicatesReceived = 0;       
+        this.gossipRoundsSent = 0;         
+        this.gossipMessagesSent = 0;       
 
-        // ── Throughput (sliding window) ──────────────────────────
-        this.publishTimestamps = [];       // timestamps of local publishes
-        this.deliveryTimestamps = [];      // timestamps of gossip deliveries
-        this.windowMs = 60000;             // 60-second sliding window
+        this.publishTimestamps = [];       
+        this.deliveryTimestamps = [];      
+        this.windowMs = 60000;             
 
-        // ── Per-broker breakdown ─────────────────────────────────
-        this.deliveriesByOrigin = {};      // { origin_broker_id: count }
+        this.deliveriesByOrigin = {};     
 
-        // ── Start time ───────────────────────────────────────────
         this.startTime = Date.now();
     }
 
-    // ─── Called when THIS broker publishes an event ───────────────
     recordPublish() {
         this.eventsPublished += 1;
         this.publishTimestamps.push(Date.now());
         this._pruneWindow(this.publishTimestamps);
     }
 
-    // ─── Called when THIS broker receives a NEW event via gossip ──
     recordDelivery(message) {
         this.eventsDelivered += 1;
         this.deliveryTimestamps.push(Date.now());
         this._pruneWindow(this.deliveryTimestamps);
 
-        // Latency: compare publish_timestamp (set at origin) to now
         if (message.publish_timestamp) {
             const latency = Date.now() - message.publish_timestamp;
             if (latency >= 0) {
@@ -67,18 +50,15 @@ class MetricsCollector {
         this.deliveriesByOrigin[origin] = (this.deliveriesByOrigin[origin] || 0) + 1;
     }
 
-    // ─── Called for each duplicate detected during gossip receive ─
     recordDuplicate() {
         this.duplicatesReceived += 1;
     }
 
-    // ─── Called after each outbound gossip round ─────────────────
     recordGossipRound(messageCount) {
         this.gossipRoundsSent += 1;
         this.gossipMessagesSent += messageCount;
     }
 
-    // ─── Compute latency percentiles ─────────────────────────────
     _percentile(sortedArr, p) {
         if (sortedArr.length === 0) return 0;
         const idx = Math.ceil((p / 100) * sortedArr.length) - 1;
@@ -102,7 +82,6 @@ class MetricsCollector {
         };
     }
 
-    // ─── Sliding-window throughput ────────────────────────────────
     _pruneWindow(arr) {
         const cutoff = Date.now() - this.windowMs;
         while (arr.length > 0 && arr[0] < cutoff) {
@@ -123,15 +102,11 @@ class MetricsCollector {
         };
     }
 
-    // ─── Full metrics snapshot ────────────────────────────────────
     getMetrics() {
         const latency = this.getLatencyStats();
         const throughput = this.getThroughput();
         const uptimeMs = Date.now() - this.startTime;
 
-        // Reliability ratio: for non-publisher brokers (eventsPublished === 0),
-        // we can't compute a local ratio — but we report the raw counts so the
-        // test harness can compare across the cluster.
         const deliveryRatio = this.eventsPublished > 0
             ? parseFloat((this.eventsDelivered / this.eventsPublished).toFixed(4))
             : null;
@@ -157,7 +132,6 @@ class MetricsCollector {
         };
     }
 
-    // ─── Reset for clean test runs ───────────────────────────────
     reset() {
         this.latencySamples = [];
         this.eventsPublished = 0;

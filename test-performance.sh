@@ -46,7 +46,7 @@ for i in $(seq 1 30); do
     break
   fi
   sleep 1
-  if [ "$i" -eq 30 ]; then echo "   ❌ Seed broker not ready after 30s. Aborting."; exit 1; fi
+  if [ "$i" -eq 30 ]; then echo " Seed broker not ready after 30s. Aborting."; exit 1; fi
 done
 
 sleep 5  

@@ -7,7 +7,6 @@ const { sendNotification } = require('../websocket');
 module.exports = (lamportClock) => {
     const router = express.Router();
 
-    //create a subscription
     router.post('/', authenticateToken, async (req, res) => {
         const { genre, artist, city, state, start_date, end_date } = req.body;
         const userId = req.userId;
@@ -27,7 +26,6 @@ module.exports = (lamportClock) => {
                 [userId, genre || null, artist || null, city, state, start_date, end_date, lamp_clock_value]
             );
 
-            // Backfill: find existing events that match this new subscription and notify immediately
             const existingEvents = await pool.query(
                 `SELECT * FROM events
                  WHERE city = $1 AND state = $2
@@ -62,17 +60,16 @@ module.exports = (lamportClock) => {
             res.status(201).json({ message: 'Subscription created successfully', subscription: result.rows[0] });
         } catch (err) {
             console.error('Error creating subscription:', err);
-            if (err.code === '23514') { // Check constraint violation
+            if (err.code === '23514') { 
                 return res.status(400).json({ message: 'Invalid subscription criteria.' });
             }
-            if (err.code === '23505') { // Unique violation
+            if (err.code === '23505') { 
                 return res.status(400).json({ message: 'You already have a subscription with these criteria.' });
             }
             res.status(500).json({ message: 'Internal server error' });
         }
     });
 
-    //get all subscriptions for the authenticated user
     router.get('/', authenticateToken, async (req, res) => {
         try {
             const result = await pool.query(
@@ -87,7 +84,6 @@ module.exports = (lamportClock) => {
         }
     });
 
-    // get past notifications for the current user
     router.get('/notifications', authenticateToken, async (req, res) => {
         try {
             const result = await pool.query(
@@ -105,7 +101,6 @@ module.exports = (lamportClock) => {
         }
     });
 
-    //delete a subscription by id
     router.delete('/:id', authenticateToken, async (req, res) => {
         try {
             let lamp_clock_value = lamportClock.increment();

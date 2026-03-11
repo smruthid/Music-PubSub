@@ -6,7 +6,6 @@ const { sendNotification } = require('../websocket');
 module.exports = (gossipService, lamportClock) => {
     const router = express.Router();
 
-    // publish an event
     router.post('/', authenticateToken, async (req, res) => {
         const { title, artist, genre, city, state, venue, event_date_time, priority } = req.body;
 
@@ -22,7 +21,6 @@ module.exports = (gossipService, lamportClock) => {
             );
             const event = result.rows[0];
 
-            // Propagate event to peer brokers via gossip
             gossipService.publishEvent(event);
 
             const matchingResult = await pool.query(
@@ -63,7 +61,6 @@ module.exports = (gossipService, lamportClock) => {
         }
     });
 
-    // get all events
     router.get('/', authenticateToken, async (_req, res) => {
         try {
             const result = await pool.query(

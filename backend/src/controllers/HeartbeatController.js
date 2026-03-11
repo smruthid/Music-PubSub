@@ -14,11 +14,9 @@ class HeartbeatController {
             }
 
             if (broker_id) {
-                // Refresh the peer in the registry so they don't get cleaned up
                 if (this.registry) {
                     this.registry.refreshPeer(broker_id);
 
-                    // If this broker isn't in the registry (e.g. it was cleaned up), re-add it
                     if (!this.registry.peers.has(broker_id)) {
                         this.registry.addPeer({
                             id: broker_id,
@@ -28,8 +26,6 @@ class HeartbeatController {
                     }
                 }
 
-                // Reset the health tracking in HeartbeatService so it doesn't
-                // mark this broker as unhealthy while it's actively sending us heartbeats
                 if (this.heartbeatService.brokerHealth.has(broker_id)) {
                     const health = this.heartbeatService.brokerHealth.get(broker_id);
                     health.healthy = true;

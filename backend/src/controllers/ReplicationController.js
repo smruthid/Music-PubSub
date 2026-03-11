@@ -62,7 +62,6 @@ class ReplicationController {
         }
     }
 
-    // ─── Performance Metrics Endpoint ────────────────────────────
     getMetrics(_req, res) {
         try {
             if (!this.metricsCollector) {
@@ -75,7 +74,6 @@ class ReplicationController {
         }
     }
 
-    // ─── Reset Metrics (for clean test runs) ─────────────────────
     resetMetrics(_req, res) {
         try {
             if (!this.metricsCollector) {

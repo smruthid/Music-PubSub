@@ -1,5 +1,3 @@
-#NETWORK PARTITION TEST
-# Usage:
 #   1. docker compose down -v && docker compose up --build --scale broker=2
 #   2. bash test-network-partition.sh
 

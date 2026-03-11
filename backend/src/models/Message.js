@@ -2,17 +2,17 @@ const crypto = require('crypto');
 
 class Message {
     constructor(type, brokerId, lamportClock, payload) {
-        this.message_id = crypto.randomUUID(); // globally unique ID for deduplication
-        this.type = type; // 'event', 'ack', 'sync_request', 'sync_response'
-        this.origin_broker = brokerId; // the broker that ORIGINALLY published the event
-        this.broker_id = brokerId; // the broker currently forwarding the event
+        this.message_id = crypto.randomUUID(); 
+        this.type = type; 
+        this.origin_broker = brokerId; 
+        this.broker_id = brokerId; 
         this.lamport_clock = lamportClock;
         this.timestamp = Date.now();
-        this.publish_timestamp = Date.now(); // wall-clock time at original publish (for latency measurement)
+        this.publish_timestamp = Date.now(); 
         this.payload = payload;
-        this.seq_number = null; // assigned when added to the queue
+        this.seq_number = null; 
         this.replicated = false;
-        this.hops = 0; // how many times this message has been forwarded
+        this.hops = 0; 
     }
 
     toJSON() {

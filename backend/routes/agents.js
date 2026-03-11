@@ -7,12 +7,10 @@ const MobileAgent = require('../src/models/MobileAgent');
 module.exports = (brokerId, port, registry) => {
     const router = express.Router();
 
-    // Internal route: receives a forwarded agent from another broker
     router.post('/', async (req, res) => {
         try {
             const agent = req.body;
 
-            // Guard: if we've already been visited, return immediately to prevent loops
             if (agent.visited_brokers.includes(brokerId)) {
                 return res.json({ message: 'Agent completed', results: agent.results });
             }
@@ -26,7 +24,7 @@ module.exports = (brokerId, port, registry) => {
 
             agent.results.push({ brokerId: brokerId, data });
 
-            // Try to forward to the next unvisited peer
+            
             const peerBrokers = registry.getPeers();
             const unvisited = peerBrokers.filter(b => !agent.visited_brokers.includes(b.id));
 
@@ -39,13 +37,12 @@ module.exports = (brokerId, port, registry) => {
                     );
                     return res.json(response.data);
                 } catch (err) {
-                    // This peer is unreachable, mark as visited and try next
                     agent.visited_brokers.push(nextBroker.id);
                     console.log(`[${brokerId}] Agent: peer ${nextBroker.id} unreachable, skipping`);
                 }
             }
 
-            // No more reachable peers — return what we have
+            
             return res.json({ message: 'Agent completed', results: agent.results });
         } catch (err) {
             console.error(`[${brokerId}] Agent error:`, err.message);
@@ -53,7 +50,7 @@ module.exports = (brokerId, port, registry) => {
         }
     });
 
-    // User-facing route: starts a mobile agent from this broker
+    
     router.get('/trending', authenticateToken, async (req, res) => {
         try {
             const { task } = req.query;
@@ -61,7 +58,7 @@ module.exports = (brokerId, port, registry) => {
                 return res.status(400).json({ message: 'Task query parameter is required' });
             }
 
-            // Step 1: Run the query locally on this broker
+            
             const localData = await runAgentTask(task);
             if (!localData) {
                 return res.status(400).json({ message: 'Invalid task' });
@@ -70,9 +67,6 @@ module.exports = (brokerId, port, registry) => {
             const results = [{ brokerId: brokerId, data: localData }];
             const visited = [brokerId];
 
-            // Step 2: Forward a SINGLE agent that chains through all peers sequentially.
-            // We send it to the first reachable peer; that peer will forward it onward
-            // to the next unvisited peer, and so on (mobile agent pattern).
             const peerBrokers = registry.getPeers();
 
             if (peerBrokers.length > 0) {
@@ -95,7 +89,7 @@ module.exports = (brokerId, port, registry) => {
                             results.push(...response.data.results);
                         }
                         agentSent = true;
-                        break; // The agent chains through peers on its own
+                        break; 
                     } catch (err) {
                         console.log(`[${brokerId}] Agent: peer ${peer.id} unreachable, trying next`);
                         visited.push(peer.id);
@@ -118,10 +112,7 @@ module.exports = (brokerId, port, registry) => {
     return router;
 };
 
-/**
- * Runs the agent query task against the local database.
- * Returns the result rows or null if the task is invalid.
- */
+
 async function runAgentTask(task) {
     if (task === 'trending_artists') {
         const result = await pool.query(

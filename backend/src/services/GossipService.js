@@ -13,20 +13,16 @@ class GossipService {
         this.messageQueue = [];
         this.seqNumber = 0;
 
-        // Deduplication: track message_ids we've already processed
         this.seenMessages = new Set();
 
-        // Maximum number of hops a message can travel before it stops being re-gossiped
         this.maxHops = 5;
 
-        // Track the highest seq number each peer has acknowledged (for locally published messages)
         this.brokerSeqTracking = new Map();
         this.peerBrokers.forEach(b => this.brokerSeqTracking.set(b.id, 0));
 
         this.fanout = 2;
         this.gossipInterval = 2000;
 
-        // Limit seenMessages set size to prevent unbounded memory growth
         this.maxSeenMessages = 10000;
     }
 
@@ -54,11 +50,9 @@ class GossipService {
 
         message.seq_number = this.seqNumber;
 
-        // Mark as seen so we don't re-process our own message
         this.seenMessages.add(message.message_id);
         this.messageQueue.push(message);
 
-        // ── Metrics: record publish ──
         if (this.metricsCollector) {
             this.metricsCollector.recordPublish();
         }
@@ -75,20 +69,14 @@ class GossipService {
             await this.sendGossipToBroker(broker);
         }
 
-        // ── Metrics: record gossip round ──
         if (this.metricsCollector) {
             this.metricsCollector.recordGossipRound(this.messageQueue.length * targets.length);
         }
 
-        // After sending, age every message in the queue by incrementing its hop count.
-        // This ensures that even locally-published messages (which start at hops=0)
-        // will eventually be pruned, stopping the "0 new, N duplicates" chatter.
         this.messageQueue.forEach(msg => { msg.hops += 1; });
 
-        // Prune messages that have exceeded maxHops (they've spread far enough)
         this.messageQueue = this.messageQueue.filter(msg => msg.hops < this.maxHops);
 
-        // Prune seenMessages if it gets too large (keep memory bounded)
         if (this.seenMessages.size > this.maxSeenMessages) {
             const entries = [...this.seenMessages];
             const toRemove = entries.slice(0, entries.length - this.maxSeenMessages / 2);
@@ -104,8 +92,6 @@ class GossipService {
 
     async sendGossipToBroker(broker) {
         try {
-            // Send all messages currently in the queue (the receiver will deduplicate).
-            // No need to filter by hops here — runGossipRound prunes after this call.
             const messagesToSend = this.messageQueue;
 
             if (messagesToSend.length === 0) return;
@@ -126,7 +112,7 @@ class GossipService {
             const response = await axios.post(url, payload, { timeout: 3000, headers });
 
             if (response.data?.status === 'success') {
-                console.log(`[${this.brokerId}] ✓ Gossiped ${messagesToSend.length} msg(s) to ${broker.id}`);
+                console.log(`[${this.brokerId}] Gossiped ${messagesToSend.length} msg(s) to ${broker.id}`);
             }
 
             if (response.data?.lamport_clock) {
@@ -150,11 +136,9 @@ class GossipService {
             for (const eventData of events) {
                 const messageId = eventData.message_id;
 
-                // DEDUPLICATION: skip messages we've already seen
                 if (messageId && this.seenMessages.has(messageId)) {
                     duplicateCount++;
 
-                    // ── Metrics: record duplicate ──
                     if (this.metricsCollector) {
                         this.metricsCollector.recordDuplicate();
                     }
@@ -162,26 +146,21 @@ class GossipService {
                     continue;
                 }
 
-                // Mark as seen
                 if (messageId) {
                     this.seenMessages.add(messageId);
                 }
 
-                // Save to database (idempotent — the DB check in app.js handles duplicates)
                 await this.database.saveEvent(eventData);
                 newCount++;
 
-                // ── Metrics: record delivery with latency data ──
                 if (this.metricsCollector) {
                     this.metricsCollector.recordDelivery(eventData);
                 }
 
-                // RE-GOSSIP: Add to our own messageQueue so we forward it to other peers.
-                // This is the key fix — without this, messages die after one hop.
                 if ((eventData.hops || 0) < this.maxHops) {
                     const forwarded = Message.fromJSON(eventData);
-                    forwarded.hops = (eventData.hops || 0) + 1; // increment hop count
-                    forwarded.broker_id = this.brokerId; // we are now the forwarder
+                    forwarded.hops = (eventData.hops || 0) + 1; 
+                    forwarded.broker_id = this.brokerId; 
                     this.seqNumber += 1;
                     forwarded.seq_number = this.seqNumber;
                     this.messageQueue.push(forwarded);
@@ -207,9 +186,6 @@ class GossipService {
         return this.seqNumber;
     }
 
-    /**
-     * Dynamically add a new peer broker at runtime.
-     */
     addPeer(broker) {
         if (!this.peerBrokers.find(b => b.id === broker.id)) {
             this.peerBrokers.push(broker);
@@ -218,9 +194,6 @@ class GossipService {
         }
     }
 
-    /**
-     * Dynamically remove a peer broker at runtime.
-     */
     removePeer(brokerId) {
         this.peerBrokers = this.peerBrokers.filter(b => b.id !== brokerId);
         this.brokerSeqTracking.delete(brokerId);
