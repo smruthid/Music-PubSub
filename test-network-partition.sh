@@ -1,6 +1,4 @@
-#!/usr/bin/env bash
-# test-network-partition.sh — Simple network partition test
-#
+#NETWORK PARTITION TEST
 # Usage:
 #   1. docker compose down -v && docker compose up --build --scale broker=2
 #   2. bash test-network-partition.sh
@@ -13,11 +11,10 @@ CURL="curl -sk"
 NETWORK=$(docker network ls --format '{{.Name}}' | grep pubsub-network | head -1)
 
 echo ""
-echo "====== Network Partition Test ======"
+echo " Network Partition Test"
 echo "Network: $NETWORK"
 echo ""
 
-# Wait for cluster
 echo "Waiting for cluster..."
 for i in $(seq 1 30); do
   $CURL "$SEED/health" 2>/dev/null | grep -q '"status":"ok"' && break
@@ -25,15 +22,12 @@ for i in $(seq 1 30); do
 done
 sleep 8
 
-# Get cluster info
 CLUSTER=$($CURL -H "X-Broker-Secret: $BSECRET" "$SEED/api/cluster/members")
 echo "Cluster: $(echo "$CLUSTER" | python3 -c "import sys,json; d=json.load(sys.stdin); print(f'size={d[\"cluster_size\"]}')")"
 
-# Find the first non-seed broker container
 CONTAINER=$(docker compose ps | grep -E 'broker-[0-9]+' | awk '{print $1}' | head -1)
 echo "Target container: $CONTAINER"
 
-# Register user + subscribe
 $CURL -X POST "$SEED/auth/register" -H "Content-Type: application/json" \
   -d '{"username":"nettest","email":"net@test.com","password":"pass123"}' > /dev/null 2>&1 || true
 TOKEN=$($CURL -X POST "$SEED/auth/login" -H "Content-Type: application/json" \
@@ -122,7 +116,6 @@ docker stop "$SEED_CONTAINER" > /dev/null 2>&1
 echo "Seed broker is down. Waiting 10s..."
 sleep 10
 
-# Check that non-seed brokers are still running
 ALIVE=$(docker inspect -f '{{.State.Running}}' "$CONTAINER" 2>/dev/null || echo "false")
 echo "Non-seed broker still running: $ALIVE"
 
@@ -145,4 +138,4 @@ CLUSTER4=$($CURL -H "X-Broker-Secret: $BSECRET" "$SEED/api/cluster/members")
 echo "Cluster after seed recovery: $(echo "$CLUSTER4" | python3 -c "import sys,json; d=json.load(sys.stdin); print(f'size={d[\"cluster_size\"]}')")"
 
 echo ""
-echo "====== Done ======"
+echo "Done"

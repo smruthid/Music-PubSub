@@ -8,9 +8,8 @@ NC='\033[0m'
 PASS=0
 FAIL=0
 
-echo "======================================"
+echo ""
 echo "Phase 1 API Test Suite"
-echo "======================================"
 echo ""
 
 test_endpoint() {
@@ -78,9 +77,9 @@ sync_payload='{"broker_id":"test","last_known_seq":0}'
 test_endpoint "Broker-1 POST /api/sync-request" "POST" "http://localhost:5001/api/sync-request" "$sync_payload" "sync_response"
 
 echo ""
-echo "======================================"
+echo ""
 echo "Results: Passed=$PASS Failed=$FAIL"
-echo "======================================"
+echo ""
 
 if [ $FAIL -eq 0 ]; then
     echo "All Phase 1 tests passed!"
