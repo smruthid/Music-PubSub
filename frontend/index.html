@@ -6,7 +6,7 @@
 </head>
 <body>
     <script>
-        // Entry point — send logged-in users to the subscribe page, others to login
+        // Entry point
         if (localStorage.getItem('token')) {
             window.location.href = 'subscribe.html';
         } else {
