@@ -1,28 +1,13 @@
-#!/usr/bin/env bash
-# ─────────────────────────────────────────────────────────────────────
-# test-performance.sh — Performance evaluation test harness
-#
-# Measures latency, reliability, and throughput under load.
-# Uses 'docker compose exec' + node to reach non-seed brokers inside
-# the Docker network (peer IPs are not reachable from the host).
-#
-# Usage:
 #   1. In terminal 1:  docker compose down -v && docker compose up --build --scale broker=2
 #   2. In terminal 2:  bash test-performance.sh
-# ─────────────────────────────────────────────────────────────────────
 
 set -euo pipefail
 
 SEED="https://localhost:5001"
 BSECRET="super_secret_broker_key_2026"
-CURL="curl -sk"             # silent + allow self-signed certs
-NUM_EVENTS=20               # number of events to publish for load test
+CURL="curl -sk"            
+NUM_EVENTS=20               
 
-# Helper: fetch a URL from inside the seed-broker container using Node.js
-# Usage: docker_fetch <host:port> <path> [method]
-#
-# IMPORTANT: Do NOT use "PATH" as a local variable name — it clobbers
-# the shell's executable search path and breaks 'docker compose exec'.
 docker_fetch() {
   local ADDR="$1"
   local URL_PATH="$2"
@@ -56,7 +41,6 @@ echo "║       PERFORMANCE EVALUATION TEST HARNESS                ║"
 echo "╚══════════════════════════════════════════════════════════╝"
 echo ""
 
-# ─── Wait for cluster ────────────────────────────────────────────
 echo "⏳ Waiting for seed-broker to be ready..."
 for i in $(seq 1 30); do
   if $CURL "$SEED/health" 2>/dev/null | grep -q '"status":"ok"'; then
@@ -67,15 +51,13 @@ for i in $(seq 1 30); do
   if [ "$i" -eq 30 ]; then echo "   ❌ Seed broker not ready after 30s. Aborting."; exit 1; fi
 done
 
-sleep 5  # let non-seed brokers join
+sleep 5  
 echo ""
 
-# ─── Cluster info ────────────────────────────────────────────────
 echo "📡 Cluster members:"
 $CURL -H "X-Broker-Secret: $BSECRET" "$SEED/api/cluster/members" | python3 -m json.tool
 echo ""
 
-# ─── Discover non-seed broker addresses (Docker-internal) ────────
 echo "🔍 Discovering non-seed broker addresses..."
 PEER_HOSTS=$($CURL -H "X-Broker-Secret: $BSECRET" "$SEED/api/cluster/members" | python3 -c "
 import sys, json
@@ -95,7 +77,6 @@ for p in "${PEER_ARRAY[@]}"; do
 done
 echo ""
 
-# ─── Register + Login ────────────────────────────────────────────
 echo "👤 Registering test user..."
 $CURL -X POST "$SEED/auth/register" \
   -H "Content-Type: application/json" \
@@ -108,7 +89,6 @@ TOKEN=$($CURL -X POST "$SEED/auth/login" \
 echo "   Token: ${TOKEN:0:20}..."
 echo ""
 
-# ─── Subscribe ────────────────────────────────────────────────────
 echo "🎵 Creating subscription (Rock, San Francisco, CA)..."
 $CURL -X POST "$SEED/subscriptions" \
   -H "Content-Type: application/json" \
@@ -117,7 +97,6 @@ $CURL -X POST "$SEED/subscriptions" \
 echo "   ✅ Subscribed."
 echo ""
 
-# ─── Reset metrics on ALL brokers ────────────────────────────────
 echo "🔄 Resetting metrics on all brokers..."
 $CURL -X POST -H "X-Broker-Secret: $BSECRET" "$SEED/api/metrics/reset" > /dev/null 2>&1
 for PEER in "${PEER_ARRAY[@]}"; do
@@ -126,7 +105,6 @@ done
 echo "   ✅ All metrics reset."
 echo ""
 
-# ─── Publish events under load ───────────────────────────────────
 echo "🚀 Publishing $NUM_EVENTS events to seed-broker..."
 START_TIME=$(python3 -c "import time; print(int(time.time()*1000))")
 
@@ -153,12 +131,10 @@ PUBLISH_DURATION=$((END_TIME - START_TIME))
 echo "   ✅ All $NUM_EVENTS events published in ${PUBLISH_DURATION}ms"
 echo ""
 
-# ─── Wait for gossip propagation ─────────────────────────────────
 echo "⏳ Waiting 15 seconds for gossip propagation + queue drain..."
 sleep 15
 echo ""
 
-# ─── Print seed broker metrics (reachable from host) ─────────────
 echo "╔══════════════════════════════════════════════════════════╗"
 echo "║  SEED BROKER METRICS (publisher)                         ║"
 echo "╚══════════════════════════════════════════════════════════╝"
@@ -215,7 +191,6 @@ else:
 "
 echo ""
 
-# ─── Print peer broker metrics (via docker compose exec + node) ──
 PEER_NUM=1
 for PEER in "${PEER_ARRAY[@]}"; do
   echo "╔══════════════════════════════════════════════════════════╗"
@@ -282,7 +257,6 @@ else:
   PEER_NUM=$((PEER_NUM + 1))
 done
 
-# ─── Replication status ─────────────────────────────────────────
 echo "── Replication Status (seed) ──"
 $CURL -H "X-Broker-Secret: $BSECRET" "$SEED/api/replication-status" | python3 -c "
 import sys, json
@@ -294,7 +268,6 @@ print(f'  Lamport clock: {d[\"lamport_clock\"]}')
 "
 echo ""
 
-# ─── Verify all events in DB ─────────────────────────────────────
 echo "── Event Delivery Verification ──"
 $CURL -H "Authorization: Bearer $TOKEN" "$SEED/events" | python3 -c "
 import sys, json
@@ -308,16 +281,13 @@ else:
 "
 echo ""
 
-# ─── Cross-cluster summary ───────────────────────────────────────
 echo "╔══════════════════════════════════════════════════════════╗"
 echo "║           CROSS-CLUSTER SUMMARY                          ║"
 echo "╚═════════════════���════════════════════════════════════════╝"
 echo ""
 
-# Gather seed metrics
 SEED_METRICS=$($CURL -H "X-Broker-Secret: $BSECRET" "$SEED/api/metrics" 2>/dev/null)
 
-# Gather peer metrics via docker exec
 ALL_PEER_JSON="["
 FIRST=true
 for PEER in "${PEER_ARRAY[@]}"; do
