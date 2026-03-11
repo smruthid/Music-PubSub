@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Trending — Music PubSub</title>
+    <link href="bootstrap.min.css" rel="stylesheet">
+</head>
+<body>
+    <nav class="navbar navbar-expand navbar-dark bg-dark px-3">
+        <a class="navbar-brand" href="index.html">Music PubSub</a>
+        <div class="navbar-nav ms-auto">
+            <a class="nav-link" href="publish.html">Publish</a>
+            <a class="nav-link" href="subscribe.html">Subscribe</a>
+            <a class="nav-link active" href="trending.html">Trending</a>
+        </div>
+        <span class="navbar-text ms-3 text-secondary small" id="navUser"></span>
+        <a href="#" class="btn btn-sm btn-outline-secondary ms-3" id="logoutBtn">Logout</a>
+    </nav>
+
+    <div class="container py-4">
+        <h5 class="mb-4">Trending Data (Mobile Agent)</h5>
+
+        <div class="d-flex gap-2 mb-4">
+            <button class="btn btn-primary" onclick="fetchTrending('trending_artists')">Top Artists</button>
+            <button class="btn btn-primary" onclick="fetchTrending('trending_genres')">Top Genres</button>
+            <button class="btn btn-primary" onclick="fetchTrending('trending_locations')">Top Locations</button>
+        </div>
+
+        <div id="msg" class="mb-3"></div>
+        <div id="results"></div>
+    </div>
+
+    <script src="api.js"></script>
+    <script>
+        requireAuth();
+
+        const user = getUser();
+        document.getElementById('navUser').textContent = user ? user.username : '';
+        document.getElementById('logoutBtn').addEventListener('click', (e) => { e.preventDefault(); logout(); });
+
+        async function fetchTrending(task) {
+            const msg = document.getElementById('msg');
+            const results = document.getElementById('results');
+
+            msg.innerHTML = '<div class="alert alert-info py-2">Fetching from cluster...</div>';
+            results.innerHTML = '';
+
+            try {
+                const data = await apiFetch(`/agents/trending?task=${task}`);
+
+                msg.innerHTML = '';
+                results.innerHTML = data.results.map(broker => `
+                    <div class="card mb-3">
+                        <div class="card-header fw-semibold">Broker</div>
+                        <div class="card-body p-0">
+                            <table class="table table-sm mb-0">
+                                <thead>
+                                    <tr>${Object.keys(broker.data[0] || {}).map(k => `<th>${k}</th>`).join('')}</tr>
+                                </thead>
+                                <tbody>
+                                    ${broker.data.map(row => `
+                                        <tr>${Object.values(row).map(v => `<td>${v}</td>`).join('')}</tr>
+                                    `).join('')}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                `).join('') || '<p class="text-secondary">No data returned.</p>';
+
+            } catch (err) {
+                msg.innerHTML = `<div class="alert alert-danger py-2">${err.message}</div>`;
+            }
+        }
+    </script>
+</body>
+</html>
