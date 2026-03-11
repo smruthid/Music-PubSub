@@ -36,15 +36,13 @@ docker_fetch() {
 }
 
 echo ""
-echo "╔══════════════════════════════════════════════════════════╗"
-echo "║       PERFORMANCE EVALUATION TEST HARNESS                ║"
-echo "╚══════════════════════════════════════════════════════════╝"
+echo "       PERFORMANCE EVALUATION TEST HARNESS                "
 echo ""
 
 echo "⏳ Waiting for seed-broker to be ready..."
 for i in $(seq 1 30); do
   if $CURL "$SEED/health" 2>/dev/null | grep -q '"status":"ok"'; then
-    echo "   ✅ Seed broker is up."
+    echo "Seed broker is up."
     break
   fi
   sleep 1
@@ -54,11 +52,11 @@ done
 sleep 5  
 echo ""
 
-echo "📡 Cluster members:"
+echo "Cluster members:"
 $CURL -H "X-Broker-Secret: $BSECRET" "$SEED/api/cluster/members" | python3 -m json.tool
 echo ""
 
-echo "🔍 Discovering non-seed broker addresses..."
+echo "Discovering non-seed broker addresses..."
 PEER_HOSTS=$($CURL -H "X-Broker-Secret: $BSECRET" "$SEED/api/cluster/members" | python3 -c "
 import sys, json
 data = json.load(sys.stdin)
@@ -77,7 +75,7 @@ for p in "${PEER_ARRAY[@]}"; do
 done
 echo ""
 
-echo "👤 Registering test user..."
+echo "Registering test user..."
 $CURL -X POST "$SEED/auth/register" \
   -H "Content-Type: application/json" \
   -d '{"username":"perftest","email":"perf@test.com","password":"pass123"}' > /dev/null 2>&1 || true
@@ -94,18 +92,18 @@ $CURL -X POST "$SEED/subscriptions" \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer $TOKEN" \
   -d '{"genre":"Rock","city":"San Francisco","state":"CA","start_date":"2026-01-01","end_date":"2026-12-31"}' > /dev/null 2>&1 || true
-echo "   ✅ Subscribed."
+echo "Subscribed."
 echo ""
 
-echo "🔄 Resetting metrics on all brokers..."
+echo "Resetting metrics on all brokers..."
 $CURL -X POST -H "X-Broker-Secret: $BSECRET" "$SEED/api/metrics/reset" > /dev/null 2>&1
 for PEER in "${PEER_ARRAY[@]}"; do
   docker_fetch "$PEER" "/api/metrics/reset" "POST" > /dev/null 2>&1 || true
 done
-echo "   ✅ All metrics reset."
+echo "All metrics reset."
 echo ""
 
-echo "🚀 Publishing $NUM_EVENTS events to seed-broker..."
+echo "Publishing $NUM_EVENTS events to seed-broker..."
 START_TIME=$(python3 -c "import time; print(int(time.time()*1000))")
 
 for i in $(seq 1 $NUM_EVENTS); do
@@ -128,16 +126,14 @@ wait
 
 END_TIME=$(python3 -c "import time; print(int(time.time()*1000))")
 PUBLISH_DURATION=$((END_TIME - START_TIME))
-echo "   ✅ All $NUM_EVENTS events published in ${PUBLISH_DURATION}ms"
+echo "All $NUM_EVENTS events published in ${PUBLISH_DURATION}ms"
 echo ""
 
-echo "⏳ Waiting 15 seconds for gossip propagation + queue drain..."
+echo "Waiting 15 seconds for gossip propagation + queue drain..."
 sleep 15
 echo ""
 
-echo "╔══════════════════════════════════════════════════════════╗"
-echo "║  SEED BROKER METRICS (publisher)                         ║"
-echo "╚══════════════════════════════════════════════════════════╝"
+echo "  SEED BROKER METRICS (publisher)"
 echo ""
 
 $CURL -H "X-Broker-Secret: $BSECRET" "$SEED/api/metrics" | python3 -c "
@@ -193,15 +189,14 @@ echo ""
 
 PEER_NUM=1
 for PEER in "${PEER_ARRAY[@]}"; do
-  echo "╔══════════════════════════════════════════════════════════╗"
-  echo "║  PEER BROKER #$PEER_NUM METRICS (gossip receiver)               ║"
-  echo "╚══════════════════════════════════════════════════════════╝"
+  echo ""
+  echo "  PEER BROKER #$PEER_NUM METRICS (gossip receiver)"
   echo ""
 
   RAW=$(docker_fetch "$PEER" "/api/metrics" 2>/dev/null) || true
 
   if [ -z "$RAW" ]; then
-    echo "  ⚠️  Could not reach peer broker at $PEER"
+    echo "Could not reach peer broker at $PEER"
   else
     echo "$RAW" | python3 -c "
 import sys, json
@@ -275,15 +270,12 @@ data = json.load(sys.stdin)
 count = len(data.get('events', []))
 print(f'  Events in database: {count}')
 if count >= $NUM_EVENTS:
-    print(f'  ✅ PASS: All $NUM_EVENTS events found in DB')
+    print(f'PASS: All $NUM_EVENTS events found in DB')
 else:
     print(f'  ⚠️  Only {count}/$NUM_EVENTS events in DB')
 "
 echo ""
-
-echo "╔══════════════════════════════════════════════════════════╗"
-echo "║           CROSS-CLUSTER SUMMARY                          ║"
-echo "╚═════════════════���════════════════════════════════════════╝"
+echo "           CROSS-CLUSTER SUMMARY"
 echo ""
 
 SEED_METRICS=$($CURL -H "X-Broker-Secret: $BSECRET" "$SEED/api/metrics" 2>/dev/null)
@@ -317,7 +309,7 @@ print(f'  Number of peer brokers reporting:         {len(peer_metrics)}')
 if len(peer_metrics) > 0:
     expected = total_published * len(peer_metrics)
     ratio = total_delivered / expected * 100 if expected > 0 else 0
-    print(f'  Expected deliveries ({total_published} × {len(peer_metrics)}):       {expected}')
+    print(f'  Expected deliveries ({total_published} {len(peer_metrics)}):       {expected}')
     print(f'  Actual deliveries:                       {total_delivered}')
     print(f'  Cross-cluster reliability:               {ratio:.1f}%')
 print(f'  Total duplicates (all brokers):          {total_duplicates}')
@@ -332,25 +324,23 @@ if all_latencies:
     print(f'    Avg:     {avg_of_avgs:.1f} ms')
     print(f'    p99 max: {max_p99} ms')
     if avg_of_avgs < 5000:
-        print(f'    ✅ PASS: Average latency under 5000ms')
+        print(f' PASS: Average latency under 5000ms')
     else:
-        print(f'    ⚠️  Average latency exceeds 5000ms target')
+        print(f'  Average latency exceeds 5000ms target')
 else:
-    print('  ⚠️  No latency data from peers')
+    print('  No latency data from peers')
 PYEOF
 
 echo ""
-echo "╔══════════════════════════════════════════════════════════╗"
-echo "║           PERFORMANCE TEST COMPLETE                      ║"
-echo "╚══════════════════════════════════════════════════════════╝"
+echo "           PERFORMANCE TEST COMPLETE"
 echo ""
 echo "WHAT TO LOOK FOR:"
 echo ""
 echo "  SEED BROKER (publisher):"
-echo "    - events_published = $NUM_EVENTS ✓"
+echo "    - events_published = $NUM_EVENTS "
 echo "    - events_delivered = 0 (expected — it published locally, didn't receive via gossip)"
-echo "    - duplicates_received > 0 (dedup is working) ✓"
-echo "    - queue_size = 0 (gossip stopped chattering) ✓"
+echo "    - duplicates_received > 0 (dedup is working) "
+echo "    - queue_size = 0 (gossip stopped chattering) "
 echo ""
 echo "  PEER BROKERS (gossip receivers):"
 echo "    - events_delivered = $NUM_EVENTS (received all events via gossip)"
@@ -358,7 +348,7 @@ echo "    - latency samples = $NUM_EVENTS (each delivery measured)"
 echo "    - per_broker_deliveries shows seed-broker as the origin"
 echo ""
 echo "  TERMINAL 1 LOGS:"
-echo "    - 'Received gossip from seed-broker: 20 new, 0 duplicates' ← initial delivery"
+echo "    - 'Received gossip from seed-broker: 20 new, 0 duplicates' <-- initial delivery"
 echo "    - '0 new, 20 duplicates' in subsequent rounds ← dedup working"
-echo "    - Gossip activity STOPS after ~10s ← queue drain working"
+echo "    - Gossip activity STOPS after ~10s <-- queue drain working"
 echo ""
