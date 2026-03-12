@@ -74,6 +74,13 @@ Note: Please view our live demo in the presentation for more information
 3. Run the performance test cases: ```bash test-performance.sh```.
 4. Review the results. 
 
+### Step 8: Run the test cases
+1. Open a new terminal. 
+2. Navigate to the main folder: Music-PubSub. 
+3. Run the performance test cases: ```bash test-phase-1.sh```.
+This has 5 test cases for basic health check, detailed health, replication info, heartbeat payload, and a sync. 
+4. Review the results. 
+
 ### Step 8: Shut down
 
 ```docker compose down -v```
