@@ -80,10 +80,11 @@ The `-v` flag removes the PostgreSQL data volume so the database starts fresh ne
 
 ### Step 9: Review our deployed product 
 Our project was deployed to AWS EC2. 
-1. You can access the deployed version on ```https://3.21.240.227/``` in the browser.
+1. Go to ```https://3.21.240.227:5001/health```
 2. Click on Advanced.
 3. Click on Proceed to 3.21.240.227.
-4. Now you can create a new account and use the frontend as described in Step 5. 
+4. You can access the deployed version on ```https://3.21.240.227/``` in the browser.
+5. Now you can create a new account and use the frontend as described in Step 5. 
 
 ## Scaling
 
