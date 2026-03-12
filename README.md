@@ -78,6 +78,13 @@ From here you can:
 
 The `-v` flag removes the PostgreSQL data volume so the database starts fresh next time.
 
+### Step 9: Review our deployed product 
+Our project was deployed to AWS EC2. 
+1. You can access the deployed version on ```https://3.21.240.227/``` in the browser.
+2. Click on Advanced.
+3. Click on Proceed to localhost.
+4. Now you can create a new account and use the frontend as described in Step 5. 
+
 ## Scaling
 
 To run with more brokers, change the number after `--scale broker=`:
