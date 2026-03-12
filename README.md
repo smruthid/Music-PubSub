@@ -11,13 +11,17 @@ A distributed publish-subscribe system for real-time music event notifications. 
 
 ### Step 1: Clone the repository
 
-### Step 2: Start the cluster
+### Step 2: Give Docker access to your path
+1. Open Docker Desktop.
+2. Go to Settings -> Resources -> File Sharing.
+3. Add full path of project to the list.
+4. Click Apply & Restart.
+
+### Step 3: Start the cluster
 
 This builds the Docker image, starts PostgreSQL, the seed broker, and two peer brokers:
 
-```bash
-docker compose up --build --scale broker=2
-```
+```docker compose up --build --scale broker=2```
 
 Wait until you see log lines like:
 
@@ -27,15 +31,25 @@ broker-1     | Successfully joined cluster via seed broker
 broker-2     | Successfully joined cluster via seed broker
 ```
 
-### Step 3: Open the frontend
+### Step 4: Trust the self-signed certificate
+
+Your browser will show a certificate warning because the system uses self-signed TLS certificates. 
 
 Open your browser and go to:
 
 ```
-https://localhost:5001/index.html
+https://localhost:5001/health
 ```
-This project is deployed using AWS.
-Your browser will show a certificate warning because the system uses self-signed TLS certificates. Click **Advanced** → **Proceed to localhost** (or equivalent) to continue.
+1. Click on Advanced.
+2. Click on Proceed to localhost.
+
+### Step 5: Open the frontend
+
+Open a new terminal. Change directory to the frontend folder. 
+Run: ```npx serve .```
+Open the browser at ```http://localhost:3000/index.html```
+
+Alternatively, you can open the browser and open the static index.html file, by putting file://path-to-music-pubsub/Music-PubSub/frontend/index.html in the browser's address bar.
 
 From here you can:
 
@@ -44,12 +58,23 @@ From here you can:
 3. **Subscribe** — subscribe to events by city/state, optionally filtered by genre or artist, within a date range
 4. **Publish** — publish a music event (must match at least one subscription to trigger a notification)
 5. **Receive notifications** — the subscribe page maintains a WebSocket connection and displays notifications in real time
+6. **Trending** - review Trending genres, artists, or locations
 
-### Step 4: Shut down
+### Step 6: Run the failure test cases
+1. Open a new terminal. 
+2. Navigate to the main folder: Music-PubSub. 
+3. Run the failure test cases: ```bash test-network-partition.sh```. This tests network partition, seed broker failure, and broker failure.
+4. Review the results. 
 
-```bash
-docker compose down -v
-```
+### Step 7: Run the performance tests
+1. Open a new terminal. 
+2. Navigate to the main folder: Music-PubSub. 
+3. Run the performance test cases: ```bash test-performance.sh```.
+4. Review the results. 
+
+### Step 8: Shut down
+
+```docker compose down -v```
 
 The `-v` flag removes the PostgreSQL data volume so the database starts fresh next time.
 
@@ -57,9 +82,7 @@ The `-v` flag removes the PostgreSQL data volume so the database starts fresh ne
 
 To run with more brokers, change the number after `--scale broker=`:
 
-```bash
-docker compose up --build --scale broker=5
-```
+```docker compose up --build --scale broker=5```
 
 ## Division of Work
 
