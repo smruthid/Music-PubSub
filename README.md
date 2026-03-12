@@ -103,7 +103,7 @@ To run with more brokers, change the number after `--scale broker=`:
 - Mobile agent chaining and route implementation (`agents.js`, `MobileAgent.js`)
 - Heartbeat debugging and consecutive-miss threshold tuning
 - Performance metrics system (`MetricsCollector.js`) — latency tracking, throughput windows, reliability counters
-- Performance test script (`test-performance.sh`) on the `Final_Phase-Finishing-Touches` branch
+- Performance test script (`test-performance.sh`)
 - Broker IP resolution fix (`os.networkInterfaces()` instead of `os.hostname()`)
 
 ### Smruthi Danda
@@ -117,4 +117,4 @@ To run with more brokers, change the number after `--scale broker=`:
 - User authentication — JWT middleware (`auth.js`), login/register routes
 - Frontend — all HTML pages (`index.html`, `login.html`, `signup.html`, `subscribe.html`, `publish.html`), `api.js`
 - Subscription and event routes (`subscriptions.js`, `events.js`)
-- Failure scenario test scripts (`test-network-partition.sh`) on the `Final_Phase-Finishing-Touches` branch
+- Failure scenario test scripts (`test-network-partition.sh`) 
