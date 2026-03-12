@@ -39,7 +39,7 @@ echo ""
 echo "       PERFORMANCE EVALUATION TEST HARNESS                "
 echo ""
 
-echo "⏳ Waiting for seed-broker to be ready..."
+echo "Waiting for seed-broker to be ready..."
 for i in $(seq 1 30); do
   if $CURL "$SEED/health" 2>/dev/null | grep -q '"status":"ok"'; then
     echo "Seed broker is up."
@@ -87,7 +87,7 @@ TOKEN=$($CURL -X POST "$SEED/auth/login" \
 echo "   Token: ${TOKEN:0:20}..."
 echo ""
 
-echo "🎵 Creating subscription (Rock, San Francisco, CA)..."
+echo "Creating subscription (Rock, San Francisco, CA)..."
 $CURL -X POST "$SEED/subscriptions" \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer $TOKEN" \
