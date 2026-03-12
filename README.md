@@ -60,6 +60,8 @@ From here you can:
 5. **Receive notifications** — the subscribe page maintains a WebSocket connection and displays notifications in real time
 6. **Trending** - review Trending genres, artists, or locations
 
+Note: Please view our live demo in the presentation for more information
+
 ### Step 6: Run the failure test cases
 1. Open a new terminal. 
 2. Navigate to the main folder: Music-PubSub. 
